@@ -222,10 +222,14 @@ export class DockerHealthMonitor {
     const wasAvailable = this.available;
     this.available = await this.sandbox.isAvailable();
 
-    if (!this.available) {
+    if (!this.available && wasAvailable) {
+      // Docker became unavailable after a previous success.
       this.monitorLogger.warn(
-        'Docker daemon is not available — sandbox mode disabled; falling back to direct (unsandboxed) spawn',
+        'Docker daemon became unavailable — sandbox mode disabled; falling back to direct (unsandboxed) spawn',
       );
+    } else if (!this.available && !wasAvailable) {
+      // Docker is still unavailable (state transition already logged).
+      this.monitorLogger.debug('Docker daemon still unavailable — sandbox mode remains disabled');
     } else if (!wasAvailable && this.available) {
       // Docker became available after a previous failure.
       this.monitorLogger.info('Docker daemon is now available — sandbox mode enabled');
@@ -257,14 +261,18 @@ export class DockerSandbox {
    * Returns true only when:
    *   1. The `docker` binary is in PATH, AND
    *   2. The Docker daemon is running (`docker info` succeeds).
+   *
+   * Note: This method is silent — it does not log. The DockerHealthMonitor handles
+   * logging on state transitions. Direct callers should log at appropriate levels
+   * based on their context (e.g., DEBUG when falling back, ERROR on unexpected failures).
+   * @see OB-1666
    */
   async isAvailable(): Promise<boolean> {
     try {
       await execFileAsync('docker', ['info'], { timeout: 10_000 });
       return true;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      logger.warn({ err: message }, 'Docker not available');
+    } catch {
+      // Silent — let the caller and DockerHealthMonitor handle logging
       return false;
     }
   }

@@ -1,3 +1,5 @@
+import type { ProcessedDocument } from './intelligence.js';
+
 /**
  * A typed progress event emitted during Master AI processing and exploration.
  *
@@ -86,6 +88,8 @@ export interface InboundMessage {
   }>;
   /** Optional metadata from the platform */
   metadata?: Record<string, unknown>;
+  /** Structured content extracted from a media attachment, populated by document processors */
+  processedDocument?: ProcessedDocument;
 }
 
 /**

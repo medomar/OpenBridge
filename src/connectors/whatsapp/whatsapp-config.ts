@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export const WhatsAppConfigSchema = z.object({
   sessionName: z.string().default('openbridge-default'),

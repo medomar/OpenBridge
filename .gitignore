@@ -76,3 +76,10 @@ ob-smoke-test/
 *.db
 *.db-wal
 *.db-shm
+
+# Temporary/scratch files
+tmp_*
+*.traineddata
+
+# Demo/experiment folders (not part of open-source distribution)
+demos/

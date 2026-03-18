@@ -244,7 +244,7 @@ show_tasks() {
 
   # Extract summary line from TASKS.md header (strip markdown bold markers)
   local summary
-  summary=$(head -5 "$TASKS_PATH" | grep 'Total:' | sed 's/[>*]//g' | sed 's/^[[:space:]]*//' || echo "No summary found")
+  summary=$(head -5 "$TASKS_PATH" | grep -E 'Pending:|Total:|Done:' | head -1 | sed 's/[>*]//g' | sed 's/^[[:space:]]*//' || echo "No summary found")
   echo "  $summary"
 
   # Extract health score (strip markdown bold markers)
@@ -260,7 +260,7 @@ show_tasks() {
   local task_rows done_count pending_count progress_count
   task_rows=$(grep 'OB-[0-9]' "$TASKS_PATH" 2>/dev/null || true)
   done_count=$(echo "$task_rows" | grep -c "✅ Done" 2>/dev/null || true)
-  pending_count=$(echo "$task_rows" | grep -c -E "◻ Pending|\\| Pending" 2>/dev/null || true)
+  pending_count=$(echo "$task_rows" | grep -c -E "◻ Pending|⬚ Pending|\\| Pending" 2>/dev/null || true)
   progress_count=$(echo "$task_rows" | grep -c "🔄 In Progress" 2>/dev/null || true)
   # Ensure numeric (default to 0)
   done_count=${done_count:-0}
@@ -293,35 +293,39 @@ show_tasks() {
     echo "  Next task: (no pointer file — will scan task list)"
   fi
 
-  # Show phase breakdown using awk to correctly isolate each phase section
+  # Show phase breakdown — dynamically detect all phases from TASKS.md
   echo ""
   echo "  Phase breakdown:"
-  local phase_num=1
-  while [[ $phase_num -le 4 ]]; do
-    local phase_rows phase_done phase_pending phase_total
-    # Use awk: enter section on "## Phase N", exit on next "## " heading
-    phase_rows=$(awk "/^## Phase $phase_num/{found=1; next} /^## /{found=0} found && /OB-[0-9]/" "$TASKS_PATH" 2>/dev/null || true)
-    if [[ -n "$phase_rows" ]]; then
-      phase_done=$(echo "$phase_rows" | grep -c "✅ Done" 2>/dev/null || true)
-      phase_pending=$(echo "$phase_rows" | grep -c -E "◻ Pending|\\| Pending|🔄 In Progress" 2>/dev/null || true)
-    else
-      phase_done=0
-      phase_pending=0
-    fi
-    phase_done=${phase_done:-0}
-    phase_pending=${phase_pending:-0}
-    phase_total=$((phase_done + phase_pending))
-    if [[ "$phase_total" -gt 0 ]]; then
-      local phase_status="◻"
-      if [[ "$phase_done" -eq "$phase_total" ]]; then
-        phase_status="✅"
-      elif [[ "$phase_done" -gt 0 ]]; then
-        phase_status="🔄"
+  local phase_numbers
+  phase_numbers=$(grep -oE '^#{2,3} Phase [0-9]+' "$TASKS_PATH" 2>/dev/null | grep -oE '[0-9]+' | sort -n || true)
+  if [[ -n "$phase_numbers" ]]; then
+    while IFS= read -r phase_num; do
+      [[ -z "$phase_num" ]] && continue
+      local phase_rows phase_done phase_pending phase_total
+      phase_rows=$(awk "/^#{2,3} Phase $phase_num/{found=1; next} /^#{2,3} /{found=0} found && /OB-[0-9]/" "$TASKS_PATH" 2>/dev/null || true)
+      if [[ -n "$phase_rows" ]]; then
+        phase_done=$(echo "$phase_rows" | grep -c "✅ Done" 2>/dev/null || true)
+        phase_pending=$(echo "$phase_rows" | grep -c -E "◻ Pending|⬚ Pending|\\| Pending|🔄 In Progress" 2>/dev/null || true)
+      else
+        phase_done=0
+        phase_pending=0
       fi
-      echo "    $phase_status Phase $phase_num: $phase_done/$phase_total done"
-    fi
-    phase_num=$((phase_num + 1))
-  done
+      phase_done=${phase_done:-0}
+      phase_pending=${phase_pending:-0}
+      phase_total=$((phase_done + phase_pending))
+      if [[ "$phase_total" -gt 0 ]]; then
+        local phase_status="◻"
+        if [[ "$phase_done" -eq "$phase_total" ]]; then
+          phase_status="✅"
+        elif [[ "$phase_done" -gt 0 ]]; then
+          phase_status="🔄"
+        fi
+        echo "    $phase_status Phase $phase_num: $phase_done/$phase_total done"
+      fi
+    done <<< "$phase_numbers"
+  else
+    echo "    (no phases found)"
+  fi
 
   # Show skipped tasks
   local skipped_file="$LOG_PATH/.skipped_tasks"

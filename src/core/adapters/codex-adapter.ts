@@ -259,7 +259,11 @@ export class CodexAdapter implements CLIAdapter {
     //   1. Sandbox constraint — behavioral guidance when tool restrictions were specified
     //   2. User system prompt — caller-supplied context or instructions
     //   3. Task prompt        — the actual task description
-    let prompt = sanitizePrompt(opts.prompt, this.getPromptBudget(opts.model).maxPromptChars);
+    let prompt = sanitizePrompt(
+      opts.prompt,
+      this.getPromptBudget(opts.model).maxPromptChars,
+      'worker',
+    );
     const systemParts: string[] = [];
 
     // Inject behavioral constraint based on sandbox mode — always applied so Codex
@@ -381,14 +385,14 @@ export class CodexAdapter implements CLIAdapter {
     //
     // Because of this merger the two fields share the same underlying budget.
     // We return a conservative combined limit based on OpenAI model context windows:
-    //   - gpt-5.2-codex (default): estimated ~128K token context window (~512K chars)
-    //   - We use 100K chars total as a conservative combined budget to leave
+    //   - gpt-5.3-codex / gpt-5.2-codex: ~400K token context window (~1.6M chars)
+    //   - We use 400K chars total as a conservative combined budget to leave
     //     ample room for tool call outputs and model response tokens.
     //
     // Both fields are set to the same value to signal that they share a single pool
     // rather than having independent channels. The PromptAssembler should treat these
     // as a combined budget when targeting CodexAdapter.
-    const combined = 100_000;
+    const combined = 400_000;
     return { maxPromptChars: combined, maxSystemPromptChars: combined };
   }
 

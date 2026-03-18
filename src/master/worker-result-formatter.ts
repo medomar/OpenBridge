@@ -99,6 +99,14 @@ export interface WorkerResultMeta {
   fixCapReached?: boolean;
   /** Number of fix iterations the worker used before the cap was hit (OB-1790). */
   fixIterationsUsed?: number;
+  /**
+   * True when the worker was killed because cumulative cost exceeded maxCostUsd (OB-1524).
+   * When set, formatWorkerError appends a cost-capped advisory so the Master can
+   * adapt its strategy (e.g., narrow the prompt or use a cheaper model).
+   */
+  costCapped?: boolean;
+  /** The per-worker cost cap in USD that was exceeded (from SpawnOptions.maxCostUsd). */
+  costCapUsd?: number;
 }
 
 /**
@@ -191,11 +199,16 @@ export function formatWorkerError(meta: WorkerResultMeta, error: string): string
   const workerLabel = `worker ${meta.workerIndex}/${meta.totalWorkers}`;
   const details = `${modelLabel}, ${meta.profile}, ${workerLabel}, ${durationLabel}, exit ${meta.exitCode}`;
 
+  // OB-1524: When cost-capped, append an advisory so the Master can adapt its strategy.
+  const costCapSuffix = meta.costCapped
+    ? `\n[Worker cost-capped${meta.costCapUsd !== undefined ? ` at $${meta.costCapUsd.toFixed(2)}` : ''} — output may be incomplete. Consider narrowing the prompt or using a cheaper model.]`
+    : '';
+
   if (meta.errorCategory) {
-    return `[WORKER FAILED: ${meta.errorCategory} (${details})]\n${error.trim()}\n[/WORKER FAILED]`;
+    return `[WORKER FAILED: ${meta.errorCategory} (${details})]\n${error.trim()}${costCapSuffix}\n[/WORKER FAILED]`;
   }
 
-  return `[WORKER ERROR (${details})]\n${error.trim()}\n[/WORKER ERROR]`;
+  return `[WORKER ERROR (${details})]\n${error.trim()}${costCapSuffix}\n[/WORKER ERROR]`;
 }
 
 /**
@@ -252,7 +265,13 @@ export function formatWorkerBatch(
   outcomes: PromiseSettledResult<AgentResult>[],
   markers: Array<{
     profile: string;
-    body: { model?: string; tool?: string; prompt?: string; allowTestModification?: boolean };
+    body: {
+      model?: string;
+      tool?: string;
+      prompt?: string;
+      allowTestModification?: boolean;
+      maxCostUsd?: number;
+    };
   }>,
   workerIds?: string[],
   sessionId?: string,
@@ -300,6 +319,9 @@ export function formatWorkerBatch(
         // OB-1790: pass fix cap state so formatWorkerResult can build the escalation report
         fixCapReached: result.fixCapReached,
         fixIterationsUsed: result.fixIterationsUsed,
+        // OB-1524: pass cost-cap state so formatWorkerError can advise the Master
+        costCapped: result.costCapped,
+        costCapUsd: marker.body.maxCostUsd,
       };
 
       if (result.exitCode === 0) {

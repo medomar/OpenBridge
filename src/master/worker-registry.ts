@@ -11,7 +11,7 @@
  * - Max concurrent workers (default: 5) prevents resource exhaustion
  */
 
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import type { TaskManifest } from '../types/agent.js';
 import { TaskManifestSchema } from '../types/agent.js';
 import type { AgentResult } from '../core/agent-runner.js';
@@ -62,7 +62,7 @@ export const WorkerRecordSchema = z.object({
       turnsExhausted: z.boolean().optional(),
       turnsUsed: z.number().optional(),
       maxTurns: z.number().optional(),
-      status: z.enum(['completed', 'partial', 'fix-cap-reached']).optional(),
+      status: z.enum(['completed', 'partial', 'fix-cap-reached', 'cost-capped']).optional(),
       costUsd: z.number().optional(),
       fixIterationsUsed: z.number().optional(),
       fixCapReached: z.boolean().optional(),
@@ -106,6 +106,7 @@ export const WorkerStatsSchema = z.object({
   failed: z.number().int().nonnegative(),
   cancelled: z.number().int().nonnegative(),
   avgDurationMs: z.number().nonnegative(),
+  totalTurnsUsed: z.number().int().nonnegative(),
   byProfile: z.record(z.string(), WorkerGroupStatsSchema),
   byModel: z.record(z.string(), WorkerGroupStatsSchema),
 });
@@ -518,12 +519,16 @@ export class WorkerRegistry {
       };
     }
 
+    // Sum turnsUsed across all completed workers (OB-1572)
+    const totalTurnsUsed = completed.reduce((sum, w) => sum + (w.result?.turnsUsed ?? 0), 0);
+
     return {
       totalWorkers: workers.length,
       completed: completed.length,
       failed: failed.length,
       cancelled: cancelled.length,
       avgDurationMs: Math.round(avgDurationMs),
+      totalTurnsUsed,
       byProfile,
       byModel,
     };

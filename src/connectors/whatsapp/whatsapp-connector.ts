@@ -1,5 +1,6 @@
 import type { Connector, ConnectorEvents } from '../../types/connector.js';
 import type { InboundMessage, OutboundMessage, ProgressEvent } from '../../types/message.js';
+import { processDocument } from '../../intelligence/document-processor.js';
 import { setQrCode } from '../../core/qr-store.js';
 import { WhatsAppConfigSchema } from './whatsapp-config.js';
 import type { WhatsAppConfig } from './whatsapp-config.js';
@@ -376,6 +377,7 @@ export class WhatsAppConnector implements Connector {
 
     let content = msg.body;
     let attachments: InboundMessage['attachments'];
+    let processedDoc: InboundMessage['processedDocument'];
 
     if (downloadResult && !downloadResult.failed) {
       attachments = [
@@ -401,6 +403,20 @@ export class WhatsAppConnector implements Connector {
         { filePath: downloadResult.result.filePath, type: downloadResult.type },
         'Incoming media downloaded',
       );
+
+      // Process document to extract structured content for Master AI
+      try {
+        processedDoc = await processDocument(downloadResult.result.filePath);
+        logger.debug(
+          { filePath: downloadResult.result.filePath, docType: processedDoc.docType },
+          'Document processed',
+        );
+      } catch (err) {
+        logger.warn(
+          { err, filePath: downloadResult.result.filePath },
+          'Document processing failed',
+        );
+      }
     } else if (downloadResult?.failed) {
       // Download was attempted but failed — prepend failure notice to any caption text
       const failureText = `[Media attachment failed to download — ${downloadResult.type}]`;
@@ -408,6 +424,9 @@ export class WhatsAppConnector implements Connector {
     }
 
     const parsed = parseWhatsAppMessage(msg.id.id, msg.from, content, msg.timestamp, attachments);
+    if (processedDoc !== undefined) {
+      parsed.processedDocument = processedDoc;
+    }
     this.emit('message', parsed);
   }
 

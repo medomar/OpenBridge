@@ -488,6 +488,145 @@ function setOnline(online, reconnecting) {
   if (micBtn) micBtn.disabled = !online;
 }
 
+// --- Permission Prompt ---
+
+function showPermissionPrompt(data) {
+  var container = document.getElementById('permission-container');
+  if (!container) return;
+
+  // Only one permission prompt at a time
+  container.replaceChildren();
+
+  var timeoutSec = Math.max(1, Math.round((data.timeoutMs || 60000) / 1000));
+  var remaining = timeoutSec;
+  var countdownInterval = null;
+
+  function respond(approved) {
+    if (countdownInterval) clearInterval(countdownInterval);
+    container.replaceChildren();
+    sendMessage({
+      type: 'permission-response',
+      permissionId: data.permissionId,
+      approved: approved,
+    });
+  }
+
+  // Overlay
+  var overlay = document.createElement('div');
+  overlay.className = 'permission-overlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-label', 'Permission request');
+
+  // Modal
+  var modal = document.createElement('div');
+  modal.className = 'permission-modal';
+
+  // Header
+  var header = document.createElement('div');
+  header.className = 'permission-header';
+  var icon = document.createElement('span');
+  icon.className = 'permission-icon';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = '\uD83D\uDD10';
+  var title = document.createElement('span');
+  title.className = 'permission-title';
+  title.textContent = 'Permission Request';
+  header.appendChild(icon);
+  header.appendChild(title);
+
+  // Body
+  var body = document.createElement('div');
+  body.className = 'permission-body';
+
+  var toolRow = document.createElement('div');
+  toolRow.className = 'permission-tool';
+  var toolName = document.createElement('span');
+  toolName.className = 'permission-tool-name';
+  toolName.textContent = data.toolName || 'Unknown tool';
+  toolRow.appendChild(toolName);
+  body.appendChild(toolRow);
+
+  if (data.detail) {
+    var detail = document.createElement('div');
+    detail.className = 'permission-detail';
+    detail.textContent = data.detail;
+    body.appendChild(detail);
+  }
+
+  // Actions
+  var actions = document.createElement('div');
+  actions.className = 'permission-actions';
+
+  var allowBtn = document.createElement('button');
+  allowBtn.className = 'permission-btn permission-btn-allow';
+  allowBtn.textContent = 'Allow';
+  allowBtn.setAttribute('aria-label', 'Allow this action');
+  allowBtn.addEventListener('click', function () {
+    respond(true);
+  });
+
+  var denyBtn = document.createElement('button');
+  denyBtn.className = 'permission-btn permission-btn-deny';
+  denyBtn.textContent = 'Deny';
+  denyBtn.setAttribute('aria-label', 'Deny this action');
+  denyBtn.addEventListener('click', function () {
+    respond(false);
+  });
+
+  actions.appendChild(allowBtn);
+  actions.appendChild(denyBtn);
+
+  // Countdown
+  var countdown = document.createElement('div');
+  countdown.className = 'permission-countdown';
+  var countdownText = document.createElement('span');
+  countdownText.textContent = 'Auto-deny in ' + remaining + 's';
+  var countdownBar = document.createElement('div');
+  countdownBar.className = 'permission-countdown-bar';
+  countdownBar.style.width = '100%';
+  countdown.appendChild(countdownText);
+  countdown.appendChild(countdownBar);
+
+  modal.appendChild(header);
+  modal.appendChild(body);
+  modal.appendChild(actions);
+  modal.appendChild(countdown);
+  overlay.appendChild(modal);
+  container.appendChild(overlay);
+
+  // Focus the Allow button for keyboard accessibility
+  allowBtn.focus();
+
+  // Keyboard handler: Escape to deny
+  function onKeydown(e) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      respond(false);
+    }
+  }
+  document.addEventListener('keydown', onKeydown);
+
+  // Start countdown
+  countdownInterval = setInterval(function () {
+    remaining--;
+    if (remaining <= 0) {
+      document.removeEventListener('keydown', onKeydown);
+      respond(false);
+      return;
+    }
+    countdownText.textContent = 'Auto-deny in ' + remaining + 's';
+    countdownBar.style.width = Math.round((remaining / timeoutSec) * 100) + '%';
+  }, 1000);
+
+  // Cleanup keyboard handler when modal is dismissed
+  var origRespond = respond;
+  respond = function (approved) {
+    document.removeEventListener('keydown', onKeydown);
+    origRespond(approved);
+  };
+}
+
 // --- WebSocket message handler ---
 
 function handleMessage(data) {
@@ -564,6 +703,8 @@ function handleMessage(data) {
   } else if (data.type === 'deep-mode-state') {
     // Server-sent canonical snapshot of active deep-phase events (sent on connection or by request)
     handleDeepModeStateSnapshot(data.events);
+  } else if (data.type === 'permission-request') {
+    showPermissionPrompt(data);
   } else if (data.type === 'agent-status') {
     updateDashboard(data.agents);
   }
@@ -647,21 +788,26 @@ form.addEventListener('submit', function (e) {
         });
     }),
   ).then(function (results) {
-    const fileLines = results
-      .filter(function (r) {
-        return r && r.fileId;
-      })
-      .map(function (r) {
-        return '- ' + r.filename + ' (path: ' + r.path + ')';
-      });
+    var uploadedFiles = results.filter(function (r) {
+      return r && r.fileId;
+    });
 
-    let content = text;
-    if (fileLines.length > 0) {
-      if (content) content += '\n\n';
-      content += '[Attached files]\n' + fileLines.join('\n');
+    var content = text;
+    if (uploadedFiles.length === 0 && !content) {
+      content = '[File upload failed — no files were saved]';
     }
-    if (!content) content = '[File upload failed — no files were saved]';
-    sendMessage({ type: 'message', content: content });
+    sendMessage({
+      type: 'message',
+      content: content || '',
+      files: uploadedFiles.map(function (r) {
+        return {
+          filename: r.filename,
+          path: r.path,
+          mimeType: r.mimeType,
+          size: r.size,
+        };
+      }),
+    });
   });
 });
 

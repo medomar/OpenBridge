@@ -200,4 +200,44 @@ export const MCP_CATALOG: MCPCatalogEntry[] = [
     ],
     docsUrl: 'https://developers.notion.com/',
   },
+  {
+    name: 'Google Drive',
+    description:
+      'Upload, download, and manage files in Google Drive. Create folders, share files, and generate public links for document collaboration.',
+    category: 'productivity',
+    command: 'npx',
+    args: ['-y', '@modelcontextprotocol/server-google-drive'],
+    envVars: [
+      {
+        key: 'GOOGLE_DRIVE_CREDENTIALS',
+        description:
+          'Path to Google service account JSON key file or OAuth2 credentials from Google Cloud Console',
+        required: true,
+      },
+      {
+        key: 'GOOGLE_DRIVE_FOLDER_ID',
+        description:
+          'Optional: Google Drive folder ID to restrict file operations to a specific folder (defaults to root)',
+        required: false,
+      },
+    ],
+    docsUrl: 'https://github.com/modelcontextprotocol/servers/tree/main/src/google-drive',
+  },
+  {
+    name: 'Dropbox',
+    description:
+      'Upload, download, and organize files in Dropbox. Create shared links, manage folders, and synchronize files for team collaboration.',
+    category: 'productivity',
+    command: 'npx',
+    args: ['-y', '@modelcontextprotocol/server-dropbox'],
+    envVars: [
+      {
+        key: 'DROPBOX_ACCESS_TOKEN',
+        description:
+          'Dropbox OAuth2 access token from your Dropbox App Console (requires files.content.write and files.content.read scopes)',
+        required: true,
+      },
+    ],
+    docsUrl: 'https://github.com/modelcontextprotocol/servers/tree/main/src/dropbox',
+  },
 ];

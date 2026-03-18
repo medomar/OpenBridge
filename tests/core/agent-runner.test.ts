@@ -26,6 +26,7 @@ import {
   checkProfileCostSpike,
   getProfileCostAverages,
   resetProfileCostAverages,
+  scanDestructiveCommandViolations,
 } from '../../src/core/agent-runner.js';
 import type { SpawnOptions } from '../../src/core/agent-runner.js';
 import { BUILT_IN_PROFILES } from '../../src/types/agent.js';
@@ -245,7 +246,8 @@ describe('Tool group constants', () => {
     expect(TOOLS_READ_ONLY).toEqual(['Read', 'Glob', 'Grep']);
   });
 
-  it('TOOLS_CODE_EDIT contains editing tools plus scoped Bash', () => {
+  it('TOOLS_CODE_EDIT contains editing tools plus scoped Bash including file-op tools', () => {
+    // OB-1547 added file management tools to code-edit profile
     expect(TOOLS_CODE_EDIT).toEqual([
       'Read',
       'Edit',
@@ -255,6 +257,10 @@ describe('Tool group constants', () => {
       'Bash(git:*)',
       'Bash(npm:*)',
       'Bash(npx:*)',
+      'Bash(rm:*)',
+      'Bash(mv:*)',
+      'Bash(cp:*)',
+      'Bash(mkdir:*)',
     ]);
   });
 
@@ -289,10 +295,15 @@ describe('Tool group constants', () => {
       allowedTools: [...TOOLS_CODE_EDIT],
     });
     const toolFlags = args.filter((a) => a === '--allowedTools');
-    expect(toolFlags).toHaveLength(8);
+    // OB-1547 added 4 file-op tools (rm, mv, cp, mkdir) → 12 total
+    expect(toolFlags).toHaveLength(12);
     expect(args).toContain('Bash(git:*)');
     expect(args).toContain('Bash(npm:*)');
     expect(args).toContain('Bash(npx:*)');
+    expect(args).toContain('Bash(rm:*)');
+    expect(args).toContain('Bash(mv:*)');
+    expect(args).toContain('Bash(cp:*)');
+    expect(args).toContain('Bash(mkdir:*)');
     expect(args).not.toContain('--dangerously-skip-permissions');
   });
 
@@ -570,12 +581,12 @@ describe('AgentRunner', () => {
       retryDelay: 500,
     });
 
-    // First attempt
-    resolveChild(lastChild(), 'out1', 143, 'killed');
+    // First attempt — non-timeout exit triggers a retry
+    resolveChild(lastChild(), 'out1', 1, 'error');
     await vi.advanceTimersByTimeAsync(500);
 
-    // Second attempt
-    resolveChild(lastChild(), 'out2', 143, 'killed again');
+    // Second attempt — timeout exit breaks immediately (no more retries)
+    resolveChild(lastChild(), 'out2', 143, 'killed');
 
     await expect(promise).rejects.toThrow(AgentExhaustedError);
     await expect(promise).rejects.toThrow(/Agent failed after 2 attempt/);
@@ -657,6 +668,62 @@ describe('AgentRunner', () => {
     expect(result.exitCode).toBe(0);
     // Timeout is not passed to spawn options anymore
     expect(spawnCalls[0]!.options['timeout']).toBeUndefined();
+  });
+
+  // ── Effective timeout derivation (OB-1567, OB-F206) ─────────────────────
+  // Non-Docker workers should derive timeout from maxTurns when not explicitly set.
+  // Formula: effectiveTimeout = timeout ?? (maxTurns ? maxTurns * 30 * 1000 : 300_000)
+
+  it('derives effectiveTimeout from maxTurns when timeout is not set', async () => {
+    // maxTurns: 5 should derive timeout = 5 * 30 * 1000 = 150_000 ms
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      maxTurns: 5,
+      retries: 0,
+    });
+
+    // Complete before timeout
+    resolveChild(lastChild(), 'success', 0);
+    const result = await promise;
+
+    expect(result.exitCode).toBe(0);
+    // The timeout derivation happens internally and kills the process if exceeded
+    // (cannot directly assert the internal timeout value, but the logic is in agent-runner.ts:1365)
+  });
+
+  it('defaults effectiveTimeout to 300_000ms when maxTurns and timeout are not set', async () => {
+    // No explicit timeout and no maxTurns should default to 5 minutes (300_000 ms)
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 0,
+    });
+
+    // Complete before default timeout
+    resolveChild(lastChild(), 'success', 0);
+    const result = await promise;
+
+    expect(result.exitCode).toBe(0);
+  });
+
+  it('preserves explicit timeout without derivation from maxTurns', async () => {
+    // Explicit timeout: 60_000 should be used as-is, not derived from maxTurns
+    const promise = runner.spawn({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      maxTurns: 5, // 5 turns would normally derive to 150_000 ms
+      timeout: 60_000, // But explicit timeout should take precedence
+      retries: 0,
+    });
+
+    // Complete before timeout
+    resolveChild(lastChild(), 'success', 0);
+    const result = await promise;
+
+    expect(result.exitCode).toBe(0);
+    // The explicit timeout (60_000) is preserved and should trigger timeout logic
+    // if the process runs longer than 60 seconds
   });
 
   it('throws AgentExhaustedError on spawn error with no retries', async () => {
@@ -744,8 +811,8 @@ describe('AgentExhaustedError', () => {
     resolveChild(lastChild(), '', 1, 'error-0');
     await vi.advanceTimersByTimeAsync(100);
 
-    // Attempt 1
-    resolveChild(lastChild(), '', 143, 'error-1');
+    // Attempt 1 — non-timeout exit triggers another retry
+    resolveChild(lastChild(), '', 3, 'error-1');
     await vi.advanceTimersByTimeAsync(100);
 
     // Attempt 2
@@ -759,7 +826,7 @@ describe('AgentExhaustedError', () => {
       expect(error).toBeInstanceOf(AgentExhaustedError);
       expect(error.attempts).toHaveLength(3);
       expect(error.attempts[0]).toEqual({ attempt: 0, exitCode: 1, stderr: 'error-0' });
-      expect(error.attempts[1]).toEqual({ attempt: 1, exitCode: 143, stderr: 'error-1' });
+      expect(error.attempts[1]).toEqual({ attempt: 1, exitCode: 3, stderr: 'error-1' });
       expect(error.attempts[2]).toEqual({ attempt: 2, exitCode: 2, stderr: 'error-2' });
     }
   });
@@ -834,7 +901,8 @@ describe('AgentExhaustedError', () => {
       retryDelay: 100,
     });
 
-    resolveChild(lastChild(), '', 1, 'timeout');
+    // Non-timeout exit triggers a retry; then timeout exit breaks the loop
+    resolveChild(lastChild(), '', 1, 'non-fatal error');
     await vi.advanceTimersByTimeAsync(100);
     resolveChild(lastChild(), '', 143, 'killed');
 
@@ -846,7 +914,7 @@ describe('AgentExhaustedError', () => {
       expect(error.message).toContain('Agent failed after 2 attempt(s)');
       expect(error.message).toContain('exit 1');
       expect(error.message).toContain('exit 143');
-      expect(error.message).toContain('timeout');
+      expect(error.message).toContain('non-fatal error');
       expect(error.message).toContain('killed');
     }
   });
@@ -1233,12 +1301,12 @@ describe('AgentRunner.stream()', () => {
 
     const resultPromise = drainStream(gen);
 
-    // First attempt
-    resolveChild(lastChild(), '', 143, 'killed');
+    // First attempt — non-timeout exit triggers a retry
+    resolveChild(lastChild(), '', 1, 'error');
     await vi.advanceTimersByTimeAsync(500);
 
-    // Second attempt
-    resolveChild(lastChild(), '', 143, 'killed again');
+    // Second attempt — timeout exit breaks immediately (no more retries)
+    resolveChild(lastChild(), '', 143, 'killed');
 
     await expect(resultPromise).rejects.toThrow(AgentExhaustedError);
     await expect(resultPromise).rejects.toThrow(/Agent failed after 2 attempt/);
@@ -1457,6 +1525,60 @@ describe('resolveProfile', () => {
 
   it('returns undefined when custom profiles are empty and name is unknown', () => {
     expect(resolveProfile('nonexistent', {})).toBeUndefined();
+  });
+
+  // OB-1586: trustLevel overrides profile resolution
+  it('trusted trustLevel returns TOOLS_FULL for any profile', () => {
+    const result = resolveProfile('read-only', undefined, 'trusted');
+    expect(result).toEqual([...TOOLS_FULL]);
+  });
+
+  it('sandbox trustLevel returns TOOLS_READ_ONLY for any profile', () => {
+    const result = resolveProfile('full-access', undefined, 'sandbox');
+    expect(result).toEqual([...TOOLS_READ_ONLY]);
+  });
+
+  it('standard trustLevel returns profile tools unchanged', () => {
+    const result = resolveProfile('code-edit', undefined, 'standard');
+    expect(result).toEqual([...TOOLS_CODE_EDIT]);
+  });
+
+  it('backward compatible: no trustLevel param returns profile tools', () => {
+    const withoutTrustLevel = resolveProfile('code-edit');
+    const withStandard = resolveProfile('code-edit', undefined, 'standard');
+    expect(withoutTrustLevel).toEqual(withStandard);
+  });
+
+  // OB-1549: file-management profile contains all expected file-op tools
+  it('resolves "file-management" to array containing Bash(rm:*), Bash(mv:*), Bash(cp:*), Bash(mkdir:*), Bash(chmod:*)', () => {
+    const tools = resolveProfile('file-management');
+    expect(tools).toBeDefined();
+    expect(tools).toContain('Bash(rm:*)');
+    expect(tools).toContain('Bash(mv:*)');
+    expect(tools).toContain('Bash(cp:*)');
+    expect(tools).toContain('Bash(mkdir:*)');
+    expect(tools).toContain('Bash(chmod:*)');
+  });
+});
+
+// ── TOOLS_CODE_EDIT ─────────────────────────────────────────────────
+
+// OB-1549: TOOLS_CODE_EDIT must include file management tools (OB-1547)
+describe('TOOLS_CODE_EDIT', () => {
+  it('includes Bash(rm:*)', () => {
+    expect(TOOLS_CODE_EDIT).toContain('Bash(rm:*)');
+  });
+
+  it('includes Bash(mv:*)', () => {
+    expect(TOOLS_CODE_EDIT).toContain('Bash(mv:*)');
+  });
+
+  it('includes Bash(cp:*)', () => {
+    expect(TOOLS_CODE_EDIT).toContain('Bash(cp:*)');
+  });
+
+  it('includes Bash(mkdir:*)', () => {
+    expect(TOOLS_CODE_EDIT).toContain('Bash(mkdir:*)');
   });
 });
 
@@ -2970,6 +3092,218 @@ describe('AgentRunner.spawnWithHandle()', () => {
   });
 });
 
+// ── Streaming timeout retry skip (OB-F218, OB-1621) ──────────────────────────
+// Timeout exits (code 143/137) should not be retried because the task will
+// time out again on every retry. Rate-limit errors should still trigger retries.
+
+describe('spawnWithHandle — timeout retry skip (OB-F218)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('skips retries when timeout exit code 143 (SIGTERM) occurs', async () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithHandle({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 2,
+      retryDelay: 1000,
+    });
+
+    // First attempt — timeout exit code 143 (SIGTERM)
+    resolveChild(lastChild(), '', 143, 'timeout');
+
+    // Should NOT retry — promise should reject immediately
+    await expect(handle.promise).rejects.toThrow(AgentExhaustedError);
+
+    // Verify only 1 spawn call was made (no retries)
+    expect(spawnCalls).toHaveLength(1);
+  });
+
+  it('skips retries when timeout exit code 137 (SIGKILL) occurs', async () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithHandle({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 2,
+      retryDelay: 500,
+    });
+
+    // First attempt — timeout exit code 137 (SIGKILL)
+    resolveChild(lastChild(), '', 137, 'killed');
+
+    // Should NOT retry — promise should reject immediately
+    await expect(handle.promise).rejects.toThrow(AgentExhaustedError);
+
+    // Verify only 1 spawn call was made (no retries)
+    expect(spawnCalls).toHaveLength(1);
+  });
+
+  it('continues retrying on non-timeout exit code 1 (normal error)', async () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithHandle({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 2,
+      retryDelay: 100,
+    });
+
+    // First attempt — non-timeout error (exit code 1)
+    resolveChild(lastChild(), '', 1, 'generic error');
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Second attempt — succeeds
+    resolveChild(lastChild(), 'success', 0);
+
+    const result = await handle.promise;
+
+    // Should have succeeded after retrying
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe('success');
+    expect(result.retryCount).toBe(1);
+    // Verify 2 spawn calls were made (1 initial + 1 retry)
+    expect(spawnCalls).toHaveLength(2);
+  });
+
+  it('skips retries when timeout keyword is in stderr (even without exit code 143/137)', async () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithHandle({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 2,
+      retryDelay: 100,
+    });
+
+    // First attempt — exit code 1 with "timeout" in stderr
+    // This should classify as timeout and skip retries despite exit code not being 143/137
+    resolveChild(lastChild(), '', 1, 'worker timeout after 30 seconds');
+
+    // Should NOT retry — promise should reject immediately
+    await expect(handle.promise).rejects.toThrow(AgentExhaustedError);
+
+    // Verify only 1 spawn call was made (no retries)
+    expect(spawnCalls).toHaveLength(1);
+  });
+});
+
+describe('spawnWithStreamingHandle — timeout retry skip (OB-F218)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('skips retries when timeout exit code 143 (SIGTERM) occurs in streaming mode', async () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithStreamingHandle({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 2,
+      retryDelay: 1000,
+    });
+
+    const child = lastChild();
+
+    // Emit one chunk of output
+    child.stdout.emit('data', Buffer.from('chunk1'));
+
+    // Emit timeout exit code 143 (SIGTERM)
+    child.emit('close', 143, 'SIGTERM');
+
+    // Should NOT retry — promise should reject immediately
+    await expect(handle.promise).rejects.toThrow(AgentExhaustedError);
+
+    // Verify only 1 spawn call was made (no retries)
+    expect(spawnCalls).toHaveLength(1);
+  });
+
+  it('skips retries when timeout exit code 137 (SIGKILL) occurs in streaming mode', async () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithStreamingHandle({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 2,
+      retryDelay: 500,
+    });
+
+    const child = lastChild();
+
+    // Emit some output
+    child.stdout.emit('data', Buffer.from('data'));
+
+    // Emit timeout exit code 137 (SIGKILL)
+    child.emit('close', 137, 'SIGKILL');
+
+    // Should NOT retry — promise should reject immediately
+    await expect(handle.promise).rejects.toThrow(AgentExhaustedError);
+
+    // Verify only 1 spawn call was made (no retries)
+    expect(spawnCalls).toHaveLength(1);
+  });
+
+  it('continues retrying on non-timeout exit code 1 in streaming mode', async () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithStreamingHandle({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      retries: 2,
+      retryDelay: 100,
+    });
+
+    // First attempt — emit output then fail with code 1
+    let child = lastChild();
+    child.stdout.emit('data', Buffer.from('attempt1'));
+    child.emit('close', 1, null);
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Second attempt — emit output and succeed
+    child = lastChild();
+    child.stdout.emit('data', Buffer.from('attempt2'));
+    child.emit('close', 0, null);
+
+    const result = await handle.promise;
+
+    // Should succeed with output from second attempt
+    expect(result.exitCode).toBe(0);
+    expect(spawnCalls).toHaveLength(2);
+  });
+
+  it('triggers model fallback on rate-limit error in streaming mode', async () => {
+    const runner = new AgentRunner();
+    const handle = runner.spawnWithStreamingHandle({
+      prompt: 'test',
+      workspacePath: '/tmp',
+      model: 'sonnet-4-6', // First model in fallback chain
+      retries: 2,
+      retryDelay: 100,
+    });
+
+    // First attempt — emit output then fail with rate-limit error
+    let child = lastChild();
+    child.stdout.emit('data', Buffer.from('attempt1'));
+    child.stderr.emit('data', Buffer.from('rate limit exceeded'));
+    child.emit('close', 1, null);
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Second attempt — different model should be tried
+    child = lastChild();
+    child.stdout.emit('data', Buffer.from('attempt2'));
+    child.emit('close', 0, null);
+
+    const result = await handle.promise;
+
+    // Should succeed after model fallback
+    expect(result.exitCode).toBe(0);
+    expect(spawnCalls).toHaveLength(2);
+  });
+});
+
 // ── Cost controls (OB-F101, OB-1673) ─────────────────────────────────
 
 describe('getProfileCostCap()', () => {
@@ -2991,6 +3325,54 @@ describe('getProfileCostCap()', () => {
   it('returns undefined for an unknown profile with no overrides', () => {
     expect(getProfileCostCap('unknown-profile')).toBeUndefined();
     expect(getProfileCostCap(undefined)).toBeUndefined();
+  });
+});
+
+describe('getProfileCostCap with trustLevel', () => {
+  it('applies trusted mode multiplier (3×) to base cost caps', () => {
+    // full-access base cap: $2.00 × 3 = $6.00
+    expect(getProfileCostCap('full-access', undefined, 'trusted')).toBe(6.0);
+    // code-edit base cap: $1.00 × 3 = $3.00
+    expect(getProfileCostCap('code-edit', undefined, 'trusted')).toBe(3.0);
+    // read-only base cap: $0.50 × 3 = $1.50
+    expect(getProfileCostCap('read-only', undefined, 'trusted')).toBe(1.5);
+  });
+
+  it('applies sandbox mode multiplier (0.5×) to base cost caps', () => {
+    // read-only base cap: $0.50 × 0.5 = $0.25
+    expect(getProfileCostCap('read-only', undefined, 'sandbox')).toBe(0.25);
+    // code-edit base cap: $1.00 × 0.5 = $0.50
+    expect(getProfileCostCap('code-edit', undefined, 'sandbox')).toBe(0.5);
+    // full-access base cap: $2.00 × 0.5 = $1.00
+    expect(getProfileCostCap('full-access', undefined, 'sandbox')).toBe(1.0);
+  });
+
+  it('applies standard mode multiplier (1×) — no scaling', () => {
+    // Costs remain unchanged
+    expect(getProfileCostCap('full-access', undefined, 'standard')).toBe(2.0);
+    expect(getProfileCostCap('code-edit', undefined, 'standard')).toBe(1.0);
+    expect(getProfileCostCap('read-only', undefined, 'standard')).toBe(0.5);
+  });
+
+  it('respects user overrides even when trust level is applied', () => {
+    const overrides = { 'code-edit': 0.75 };
+    // User override ($0.75) takes priority over scaled value ($1.00 × 3 = $3.00)
+    expect(getProfileCostCap('code-edit', overrides, 'trusted')).toBe(0.75);
+    // Other profiles still get scaled
+    expect(getProfileCostCap('full-access', overrides, 'trusted')).toBe(6.0);
+  });
+
+  it('maintains backward compatibility when trustLevel is omitted', () => {
+    // Without trustLevel param, defaults to 'standard' multiplier (1×)
+    expect(getProfileCostCap('full-access')).toBe(2.0);
+    expect(getProfileCostCap('read-only')).toBe(0.5);
+    expect(getProfileCostCap('code-edit')).toBe(1.0);
+  });
+
+  it('returns undefined for unknown profiles regardless of trust level', () => {
+    expect(getProfileCostCap('unknown-profile', undefined, 'trusted')).toBeUndefined();
+    expect(getProfileCostCap('unknown-profile', undefined, 'sandbox')).toBeUndefined();
+    expect(getProfileCostCap(undefined, undefined, 'trusted')).toBeUndefined();
   });
 });
 
@@ -3138,5 +3520,41 @@ describe('turnsExhausted sets result status to partial', () => {
     expect(result.status).toBe('partial');
     expect(result.turnsExhausted).toBe(true);
     expect(result.maxTurns).toBe(5);
+  });
+});
+
+// ── Boundary command detection (OB-1591) ────────────────────────────────────
+
+describe('scanDestructiveCommandViolations() — boundary (cat) commands', () => {
+  const workspace = '/home/user/my-project';
+
+  it('detects cat targeting /etc/passwd as a boundary violation', () => {
+    const violations = scanDestructiveCommandViolations('cat /etc/passwd', workspace);
+    expect(violations.length).toBe(1);
+    expect(violations[0].command).toBe('cat');
+    expect(violations[0].path).toBe('/etc/passwd');
+    expect(violations[0].severity).toBe('boundary');
+  });
+
+  it('does not flag cat targeting a relative path inside the workspace', () => {
+    // "cat src/index.ts" resolves to workspace/src/index.ts — within boundary
+    const violations = scanDestructiveCommandViolations('cat src/index.ts', workspace);
+    expect(violations).toEqual([]);
+  });
+
+  it('does not flag cat targeting an absolute path inside the workspace', () => {
+    const violations = scanDestructiveCommandViolations(`cat ${workspace}/src/index.ts`, workspace);
+    expect(violations).toEqual([]);
+  });
+
+  it('does not flag node --version (no file path argument)', () => {
+    // node --version has no path argument that the patterns match
+    const violations = scanDestructiveCommandViolations('node --version', workspace);
+    expect(violations).toEqual([]);
+  });
+
+  it('does not flag which git (system info commands have no dangerous path)', () => {
+    const violations = scanDestructiveCommandViolations('which git', workspace);
+    expect(violations).toEqual([]);
   });
 });

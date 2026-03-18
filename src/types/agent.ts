@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 import { MCPServerSchema } from './config.js';
 
@@ -209,7 +209,9 @@ export const ToolProfileSchema = z.object({
 /** Built-in profile names that ship with OpenBridge */
 export const BuiltInProfileNameSchema = z.enum([
   'read-only',
+  'data-query',
   'code-edit',
+  'file-management',
   'full-access',
   'master',
   'code-audit',
@@ -231,10 +233,62 @@ export const BUILT_IN_PROFILES: Record<BuiltInProfileName, ToolProfile> = {
     description: 'Safe for exploration and information gathering',
     tools: ['Read', 'Glob', 'Grep'],
   },
+  'data-query': {
+    name: 'data-query',
+    description:
+      'Read-only data exploration with query tools — for analysing databases, CSV, JSON, and tabular data without modifying files',
+    tools: [
+      'Read',
+      'Glob',
+      'Grep',
+      'Bash(sqlite3:*)',
+      'Bash(python3:*)',
+      'Bash(node:*)',
+      'Bash(jq:*)',
+      'Bash(awk:*)',
+      'Bash(head:*)',
+      'Bash(tail:*)',
+      'Bash(wc:*)',
+      'Bash(sort:*)',
+      'Bash(uniq:*)',
+      'Bash(cut:*)',
+    ],
+  },
   'code-edit': {
     name: 'code-edit',
     description: 'For implementation tasks that modify files',
-    tools: ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(git:*)', 'Bash(npm:*)', 'Bash(npx:*)'],
+    tools: [
+      'Read',
+      'Edit',
+      'Write',
+      'Glob',
+      'Grep',
+      'Bash(git:*)',
+      'Bash(npm:*)',
+      'Bash(npx:*)',
+      'Bash(rm:*)',
+      'Bash(mv:*)',
+      'Bash(cp:*)',
+      'Bash(mkdir:*)',
+    ],
+  },
+  'file-management': {
+    name: 'file-management',
+    description:
+      'For tasks that require moving, copying, or deleting files/directories within the workspace. Prefer over full-access for file organization tasks.',
+    tools: [
+      'Read',
+      'Glob',
+      'Grep',
+      'Write',
+      'Edit',
+      'Bash(rm:*)',
+      'Bash(mv:*)',
+      'Bash(cp:*)',
+      'Bash(mkdir:*)',
+      'Bash(chmod:*)',
+      'Bash(git:*)',
+    ],
   },
   'full-access': {
     name: 'full-access',
@@ -275,8 +329,10 @@ export const RiskLevelSchema = z.enum(['low', 'medium', 'high', 'critical']);
 /** Maps each built-in profile to its risk level */
 export const PROFILE_RISK_MAP: Record<BuiltInProfileName, RiskLevel> = {
   'read-only': 'low',
+  'data-query': 'low',
   'code-audit': 'low',
   'code-edit': 'medium',
+  'file-management': 'medium',
   'full-access': 'high',
   master: 'critical',
 };
@@ -323,6 +379,13 @@ export const TaskManifestSchema = z.object({
   retryDelay: z.number().int().nonnegative().optional(),
   /** Maximum spend in USD for this worker (passed as --max-budget-usd) */
   maxBudgetUsd: z.number().positive().optional(),
+  /**
+   * Per-worker cost cap in USD monitored internally by AgentRunner.
+   * When cumulative reported cost exceeds this value during streaming,
+   * the process is killed and the result is marked costCapped: true.
+   * Defaults: read-only=0.05, code-edit=0.10, full-access=0.15.
+   */
+  maxCostUsd: z.number().positive().optional(),
   /** MCP servers this worker is allowed to use (per-worker isolation) */
   mcpServers: z.array(MCPServerSchema).optional(),
 });

@@ -55,6 +55,24 @@ vi.mock('whatsapp-web.js', () => {
   };
 });
 
+// Mock document-processor so tests don't attempt real file reads
+vi.mock('../../../src/intelligence/document-processor.js', () => ({
+  processDocument: vi.fn().mockResolvedValue({
+    id: 'doc-1',
+    filename: 'test.jpg',
+    mimeType: 'image/jpeg',
+    filePath: '/tmp/media/saved-file.jpg',
+    docType: 'image',
+    rawText: '',
+    tables: [],
+    images: [],
+    entities: [],
+    relations: [],
+    metadata: {},
+    processedAt: new Date().toISOString(),
+  }),
+}));
+
 // --------------------------------------------------------------------------
 // Import after mock registration
 // --------------------------------------------------------------------------

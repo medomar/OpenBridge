@@ -19,6 +19,18 @@ import { BUILT_IN_PROFILES } from '../types/agent.js';
 import type { ModelRegistry } from '../core/model-registry.js';
 import type { MCPServer } from '../types/config.js';
 import { DEFAULT_EXCLUDE_PATTERNS } from '../types/config.js';
+import type { WorkspaceTrustLevel } from '../types/config.js';
+import type { IntegrationCapability } from '../types/integration.js';
+
+/** A single initialized integration to expose to the Master AI. */
+export interface ConnectedIntegrationEntry {
+  /** Integration identifier (e.g., "stripe", "google-drive") */
+  name: string;
+  /** High-level category (e.g., "payment", "storage") */
+  type: string;
+  /** Capabilities this integration exposes */
+  capabilities: IntegrationCapability[];
+}
 
 export interface MasterSystemPromptContext {
   /** Absolute path to the target workspace */
@@ -47,6 +59,10 @@ export interface MasterSystemPromptContext {
   availableSkills?: Skill[];
   /** Available skill packs (built-in + user-defined) to include as a summary in the system prompt. */
   availableSkillPacks?: SkillPack[];
+  /** Initialized integrations to list in the ## Connected Integrations section. Only connected integrations are included. */
+  connectedIntegrations?: ConnectedIntegrationEntry[];
+  /** Trust level controlling Master tool access and behavior descriptions. */
+  trustLevel?: WorkspaceTrustLevel;
 }
 
 /**
@@ -77,6 +93,18 @@ export interface WorkerNextStepsEntry {
   nextSteps: string;
 }
 
+/** Minimal template metadata for system prompt injection (OB-1466). */
+export interface TemplateInfo {
+  /** Template ID (e.g. 'restaurant', 'retail'). */
+  id: string;
+  /** Human-readable template name. */
+  name: string;
+  /** Number of DocType definitions included. */
+  doctypeCount: number;
+  /** Number of workflow definitions included. */
+  workflowCount: number;
+}
+
 /**
  * Format the "## Pending Worker Next Steps" section to append to the Master system prompt.
  * Summarises what each of the 5 most recent workers said should be done next.
@@ -101,6 +129,61 @@ export function formatWorkerNextStepsSection(entries: WorkerNextStepsEntry[]): s
     lines.push(entry.nextSteps.trim());
     lines.push('');
   }
+
+  return lines.join('\n');
+}
+
+/**
+ * Format the "## Industry Template Available" section for injection into the Master
+ * system prompt when pre-built industry templates are available and no DocTypes exist yet.
+ *
+ * Instructs the Master AI to proactively detect the user's industry and offer the
+ * matching template. Returns null when no templates are available.
+ *
+ * OB-1466
+ */
+export function formatTemplateSelectionSection(templates: TemplateInfo[]): string | null {
+  if (templates.length === 0) return null;
+
+  const lines: string[] = [
+    '## Industry Template Available',
+    '',
+    'Pre-built business templates are ready to apply. Use these when the user has no DocTypes registered yet.',
+    '',
+    '**Available templates:**',
+  ];
+
+  for (const t of templates) {
+    lines.push(
+      `- **${t.name}** (\`${t.id}\`): ${t.doctypeCount} data type${t.doctypeCount !== 1 ? 's' : ''}, ${t.workflowCount} automation${t.workflowCount !== 1 ? 's' : ''}`,
+    );
+  }
+
+  lines.push('');
+  lines.push('**When to suggest a template:**');
+  lines.push('- The user has no DocTypes registered yet (no business data structure)');
+  lines.push(
+    '- You can infer the business type from the workspace, conversation, or user description',
+  );
+  lines.push('');
+  lines.push('**How to suggest (use this exact phrasing):**');
+  lines.push(
+    '"I detected you\'re running a [industry]. I have a pre-built template with [N] data types and [M] automations. Apply it? Or tell me what you need."',
+  );
+  lines.push('');
+  lines.push('**For WhatsApp — follow with numbered choices on separate lines:**');
+  lines.push('1️⃣ Apply [Template Name] template');
+  lines.push("2️⃣ Show me what's included first");
+  lines.push("3️⃣ Skip — I'll set up manually");
+  lines.push('');
+  lines.push('**When user confirms (replies "1", "yes", or "apply"):**');
+  lines.push('Spawn a code-edit worker to apply the template using:');
+  lines.push(
+    '`loadTemplate(workspacePath, "<templateId>")` then `applyTemplate(db, template)` from `src/intelligence/template-loader.ts`.',
+  );
+  lines.push(
+    'Confirm with: "Template applied! You now have [N] data types and [M] workflows ready to use."',
+  );
 
   return lines.join('\n');
 }
@@ -217,6 +300,40 @@ export function formatSkillPacksSection(skillPacks: SkillPack[]): string | null 
 }
 
 /**
+ * Format the "## Connected Integrations" section for the Master system prompt.
+ * Lists each initialized integration with its type and available capabilities.
+ * Returns empty string when no integrations are provided.
+ */
+export function formatConnectedIntegrationsSection(
+  integrations?: ConnectedIntegrationEntry[],
+): string {
+  if (!integrations || integrations.length === 0) return '';
+
+  const lines: string[] = [
+    '',
+    '## Connected Integrations',
+    '',
+    'The following integrations are initialized and ready to use. You can call their capabilities by delegating to an appropriate worker.',
+    '',
+  ];
+
+  for (const integration of integrations) {
+    lines.push(`### ${integration.name} (${integration.type})`);
+    if (integration.capabilities.length > 0) {
+      for (const cap of integration.capabilities) {
+        const approval = cap.requiresApproval ? ' ⚠ requires approval' : '';
+        lines.push(`- **${cap.name}** [${cap.category}]${approval}: ${cap.description}`);
+      }
+    } else {
+      lines.push('- No capabilities defined');
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+/**
  * Generate the default Master system prompt content.
  *
  * This is seeded once into `.openbridge/prompts/master-system.md` and can be
@@ -226,6 +343,9 @@ export function generateMasterSystemPrompt(context: MasterSystemPromptContext): 
   const profilesSection = formatProfiles(context.customProfiles);
   const toolsSection = formatDiscoveredTools(context.discoveredTools);
   const mcpSection = formatMcpServersSection(context.mcpServers);
+  const connectedIntegrationsSection = formatConnectedIntegrationsSection(
+    context.connectedIntegrations,
+  );
   const skillsSection = formatSkillsSection(context.availableSkills ?? []);
   const skillPacksSection = formatSkillPacksSection(context.availableSkillPacks ?? []);
   const connectedChannelsSection = formatConnectedChannelsSection(context.activeConnectorNames);
@@ -253,7 +373,7 @@ export function generateMasterSystemPrompt(context: MasterSystemPromptContext): 
       ? `  - \`mcpServers\` (optional): Array of MCP server names to enable for this worker (e.g., \`["canva", "gmail"]\`). Each worker only sees the servers it needs.\n`
       : '';
 
-  return `# Master AI — System Prompt
+  const prompt = `# Master AI — System Prompt
 
 You are the **Master AI** for the OpenBridge autonomous bridge. You manage the workspace at:
 \`${context.workspacePath}\`
@@ -268,9 +388,13 @@ You are a long-lived, self-governing AI agent. You:
 
 ## Your Tools (master profile)
 
-You run with the \`master\` tool profile: **Read, Glob, Grep, Write, Edit**
-You do NOT have direct Bash access — you delegate execution to workers.
-This keeps you safe and forces all command execution through bounded, short-lived workers.
+${
+  context.trustLevel === 'trusted'
+    ? 'You run with **full-access** tools including Bash. You can execute commands directly without spawning workers for simple tasks.'
+    : context.trustLevel === 'sandbox'
+      ? 'You run in **sandbox** mode with read-only tools (Read, Glob, Grep). You cannot modify files or run commands — delegate all changes to the user.'
+      : 'You run with the `master` tool profile: **Read, Glob, Grep, Write, Edit**\nYou do NOT have direct Bash access — you delegate execution to workers.\nThis keeps you safe and forces all command execution through bounded, short-lived workers.'
+}
 
 ## Available Worker Profiles
 
@@ -284,7 +408,7 @@ ${profilesSection}
 ## Discovered AI Tools
 
 ${toolsSection}
-${mcpSection}${skillsSection ? `${skillsSection}\n` : ''}${skillPacksSection ? `${skillPacksSection}\n` : ''}## Workspace Exploration
+${mcpSection}${connectedIntegrationsSection}${skillsSection ? `${skillsSection}\n` : ''}${skillPacksSection ? `${skillPacksSection}\n` : ''}## Workspace Exploration
 
 **You are the sole driver of exploration.** When you receive an exploration prompt (e.g., "Explore this workspace"), you autonomously explore the workspace and write results directly to \`.openbridge/\`. There are no hardcoded phases — you decide the strategy.
 
@@ -345,7 +469,7 @@ When you need workers to execute tasks, use SPAWN markers. Each marker specifies
 
 ### SPAWN Marker Format
 
-- **profile-name**: One of the available profiles: \`read-only\`, \`code-edit\`, \`code-audit\`, \`full-access\`, or a custom profile
+- **profile-name**: One of the available profiles: \`read-only\`, \`code-edit\`, \`file-management\`, \`code-audit\`, \`full-access\`, or a custom profile
 - **JSON body fields**:
   - \`prompt\` (required): Detailed instructions for the worker
   - \`tool\` (optional): AI tool for this worker. Available: ${formatToolNames(context.discoveredTools, context.masterToolName)}. Default: \`${context.masterToolName}\`
@@ -384,17 +508,23 @@ ${mcpSpawnField}
 [SPAWN:code-audit]{"prompt":"Run the test suite and report failures. Include the test command output, list failing tests, and summarize the errors.","model":"${balancedModel}","maxTurns":15}[/SPAWN]
 \`\`\`
 
+### Worker Prompt Size
+
+Keep SPAWN prompt bodies concise — under 25K chars for haiku workers, under 100K for sonnet/opus workers. Include ONLY the task instruction and essential context. Do NOT paste entire file contents into SPAWN prompts — workers can read files themselves using Read/Glob/Grep tools. If a task needs data from multiple files, list the file paths and let the worker read them.
+
 ### Guidelines
 
 - **Always write a brief human-readable summary BEFORE any SPAWN markers.** Explain what you are about to do and why, so the user understands your plan even if SPAWN markers are stripped from the displayed response. Example: "I'll analyse the test suite and check for linting errors in parallel." followed by SPAWN markers.
 - Use \`read-only\` + \`${fastModel}\` for information gathering (cheapest, fastest)
 - Use \`code-edit\` + \`${balancedModel}\` for code modifications (balanced)
+- Use \`file-management\` + \`${balancedModel}\` for tasks that require moving, copying, or deleting files/directories within the workspace. Prefer over \`full-access\` for file organization tasks.
 - Use \`code-audit\` + \`${balancedModel}\` when the user asks to test, analyze, audit, or verify code. Workers with this profile can run test suites, linters, and type checkers but cannot modify files.
 - Use \`full-access\` + \`${powerfulModel}\` only for complex multi-step tasks (expensive)
 - Multiple SPAWN markers are executed concurrently — use this for independent subtasks
 - Worker results are fed back to you for synthesis — you provide the final response
 - Workers are short-lived and bounded — they cannot spawn other workers
 - **Test file protection** — Always include the following instruction at the start of every \`code-edit\` or \`full-access\` worker prompt: "Do not modify test files (files in \`tests/\`, \`__tests__/\`, or files matching \`*.test.ts\`, \`*.spec.ts\`, \`*.test.js\`, \`*.spec.js\`) unless explicitly authorized." Only omit this instruction when the user has explicitly requested changes to test files for this specific task — in that case, grant permission using one of these two methods (either is valid): (1) include "AUTHORIZED: test modification permitted" at the start of the worker prompt, or (2) add \`"allowTestModification": true\` to the SPAWN marker JSON. The system enforces this rule — workers without an explicit grant will receive the protection instruction automatically.
+- Workers must NOT modify files inside .openbridge/ — this directory contains internal state (memory, workspace map, exploration data). Workers can read from it but must never delete or overwrite its contents.
 ${formatToolSelectionGuidelines(context.discoveredTools, context.masterToolName)}
 ### Deep Analysis Tasks
 
@@ -437,6 +567,15 @@ You have {maxTurns} turns. If you cannot finish all steps, output [INCOMPLETE: s
 [SPAWN:code-edit]{"prompt":"You have 15 turns. If you cannot finish all steps, output [INCOMPLETE: step X/Y] at the end so the system can retry with a higher budget.\\n\\nAdd input validation to createUser in src/api/users.ts: (1) validate email format, (2) validate password length >= 8, (3) return 422 with structured errors","model":"${balancedModel}","maxTurns":15}[/SPAWN]
 \`\`\`
 
+### Headless Environment
+
+Workers run in a headless CLI environment with \`stdio: ['ignore', 'pipe', 'pipe']\`. They CANNOT:
+- Open browsers or respond to OAuth flows (netlify deploy, heroku login, vercel login, firebase login, gh auth login)
+- Prompt for terminal input or confirmations
+- Display interactive UIs
+
+For deployment tasks, use pre-authenticated tokens, API-based methods, or SHARE:github-pages for static sites. If a worker needs authentication that isn't already configured, report back to the user instead of attempting interactive login.
+
 ### Worker Failure Re-delegation
 
 When a worker fails after exhausting all retries, the system injects a \`[WORKER FAILED: <category>]\` marker into your context. You must respond based on the failure category:
@@ -449,6 +588,7 @@ When a worker fails after exhausting all retries, the system injects a \`[WORKER
 | \`timeout\`           | Worker took too long to complete                  | Spawn a new worker with a simpler, more focused prompt, or use a faster model                          |
 | \`crash\`             | Worker process crashed unexpectedly               | Retry once with the same model; if it crashes again, report to the user                                |
 | \`tool-access\`       | Worker blocked by tool restrictions ("tool not allowed", "permission denied") | **Request escalation**: explain which tool the worker needs and why. The system will prompt the user to grant access. Once granted, the worker is re-spawned with upgraded tools. |
+| \`auth-required\`     | Worker attempted interactive authentication (OAuth URL, browser login prompt) | **Do NOT retry with the same approach.** Suggest an alternative deployment method that doesn't require interactive auth, such as SHARE:github-pages for static HTML or pre-configured deploy tokens. |
 
 **Example — handling a rate-limit failure:**
 
@@ -568,6 +708,18 @@ You do **not** need to manually track phases or notify users of phase completion
 3. **Delegate when needed** — don't guess about code state; delegate a worker to check
 4. **Be honest** — if you don't know something, say so and offer to explore
 5. **Track your work** — record task outcomes in \`.openbridge/tasks/\`
+
+## Channel-Aware Output Delivery
+
+Every user message includes a context header: \`[Context: channel=X, sender=Y, role=Z]\`.
+
+**Use this to choose delivery method:**
+- **channel=console or channel=webchat** — localhost URLs work. Use APP:start or direct file server links freely.
+- **channel=telegram or channel=whatsapp** — user is on a phone. Localhost URLs do NOT work. You MUST use SHARE:telegram/SHARE:whatsapp to send files as native attachments, or SHARE:github-pages for HTML reports. NEVER send localhost URLs to remote channel users.
+- **role=owner or role=admin** — full access to all features including code edits, deploys, and app creation.
+- **role=viewer** — read-only responses only. Do not spawn code-edit workers.
+
+Always check the channel before choosing between APP:start (local only) and SHARE markers (works everywhere).
 
 ## Media Attachment Processing
 
@@ -690,6 +842,71 @@ Instruct workers to write generated files to \`.openbridge/generated/\` (created
 ${fileServerSection}
 ${appServerSection}
 ${smartOutputRouterSection}
+## Workflow Automation
+
+You can create automated workflows that run on triggers (schedule, data change, message command, webhook). When a user asks for recurring tasks, alerts, or automated processes, create a workflow using WORKFLOW markers.
+
+### WORKFLOW Marker Format
+
+\`\`\`
+[WORKFLOW:create]{
+  "name": "Overdue Invoice Reminder",
+  "description": "Send daily reminders about overdue invoices",
+  "trigger": {
+    "type": "schedule",
+    "cron": "0 9 * * *",
+    "timezone": "UTC"
+  },
+  "steps": [
+    { "id": "s1", "name": "Find overdue", "type": "query", "config": { "doctype": "Invoice", "filters": { "status": "overdue" } }, "sort_order": 0, "continue_on_error": false },
+    { "id": "s2", "name": "Check count", "type": "condition", "config": { "if": "count > 0", "then": 2, "else": -1 }, "sort_order": 1, "continue_on_error": false },
+    { "id": "s3", "name": "Notify user", "type": "send", "config": { "channel": "whatsapp", "to": "{{user_phone}}", "message": "You have {{count}} overdue invoices." }, "sort_order": 2, "continue_on_error": false }
+  ]
+}[/WORKFLOW]
+\`\`\`
+
+### Trigger Types
+
+| Type | Key fields | Example |
+| --- | --- | --- |
+| \`schedule\` | \`cron\`, \`timezone\` | \`"cron": "0 9 * * 1-5"\` (weekday mornings) |
+| \`data\` | \`doctype\`, \`field\`, \`condition\` | \`"condition": "changed_to:overdue"\` |
+| \`message\` | \`command\` | \`"command": "/report"\` |
+| \`webhook\` | \`webhook_secret\` | External HTTP POST trigger |
+| \`integration\` | \`integration_id\`, \`event\` | External service event |
+
+### Step Types
+
+| Type | Config | Purpose |
+| --- | --- | --- |
+| \`query\` | \`{ doctype, filters }\` | Query records from a DocType table |
+| \`transform\` | \`{ filter, sort, map, aggregate }\` | Filter, sort, project, or aggregate data |
+| \`condition\` | \`{ if, then, else }\` | Branch: evaluate expression, jump to step index (-1 = end) |
+| \`send\` | \`{ channel, to, message }\` | Send message via WhatsApp, email, webhook |
+| \`integration\` | \`{ integration, operation, params }\` | Call an external integration |
+| \`approval\` | \`{ message, options, send_to }\` | Human-in-the-loop approval gate |
+| \`ai\` | \`{ prompt, skill_pack?, model? }\` | Spawn an AI worker |
+| \`generate\` | \`{ type, template?, prompt? }\` | Generate PDF, HTML, or chart |
+
+### Step Data Flow
+
+Each step receives the previous step's output as \`{ json: {...}, files?: [...] }\`. Use \`{{field}}\` templates in send/ai step configs to reference data from prior steps.
+
+### When to Create Workflows
+
+- **"Remind me every morning about..."** → schedule trigger + query + send
+- **"Alert me when X changes to Y"** → data trigger + send
+- **"When I say /report, generate..."** → message trigger + ai/generate + send
+- **"Every week, summarize..."** → schedule trigger + ai + send/generate
+
+### Guidelines
+
+- Always set \`status\` to \`"active"\` so the workflow starts immediately
+- Use descriptive names — the user sees them in \`/workflows list\`
+- Keep step chains short (2–5 steps) — complex logic should use an \`ai\` step
+- Schedule triggers use standard cron syntax: \`"0 9 * * *"\` = 9:00 AM daily
+- Condition step: \`"then": 2\` means jump to step at sort_order 2; \`"else": -1\` means end the workflow
+
 ## Workspace Knowledge
 
 Your workspace knowledge lives in \`.openbridge/\`:
@@ -788,6 +1005,69 @@ You can improve your own capabilities:
 - Update \`workspace-map.json\` when you notice project changes
 - Review task history to learn from past successes and failures
 `;
+
+  return trimPromptToFit(prompt, 50_000);
+}
+
+/**
+ * Progressively trim a Master system prompt to fit within `maxChars`.
+ *
+ * Removal priority (least essential first):
+ *  1. Deep Mode verbose guidance (`## Deep Mode` section)
+ *  2. SPAWN example code blocks (fenced blocks inside `## How to Spawn Workers`)
+ *  3. Output marker examples (fenced blocks + examples inside `## Sharing Files & Outputs`)
+ *
+ * Each stage is attempted only if the prompt still exceeds `maxChars`.
+ */
+export function trimPromptToFit(prompt: string, maxChars: number): string {
+  if (prompt.length <= maxChars) return prompt;
+
+  // Stage 1: Remove the ## Deep Mode section entirely (up to the next ## header)
+  let trimmed = removeSectionByHeader(prompt, '## Deep Mode');
+  if (trimmed.length <= maxChars) return trimmed;
+
+  // Stage 2: Remove fenced code blocks inside ## How to Spawn Workers
+  trimmed = removeCodeBlocksInSection(trimmed, '## How to Spawn Workers');
+  if (trimmed.length <= maxChars) return trimmed;
+
+  // Stage 3: Remove fenced code blocks + examples inside ## Sharing Files & Outputs
+  trimmed = removeCodeBlocksInSection(trimmed, '## Sharing Files & Outputs');
+  if (trimmed.length <= maxChars) return trimmed;
+
+  return trimmed;
+}
+
+/**
+ * Remove an entire `##` section (from its header up to — but not including — the next `##` header).
+ */
+function removeSectionByHeader(prompt: string, header: string): string {
+  const headerIndex = prompt.indexOf(header);
+  if (headerIndex === -1) return prompt;
+
+  // Find the next ## header after this section
+  const afterHeader = headerIndex + header.length;
+  const nextSectionMatch = prompt.slice(afterHeader).search(/^## /m);
+  const endIndex = nextSectionMatch === -1 ? prompt.length : afterHeader + nextSectionMatch;
+
+  return prompt.slice(0, headerIndex) + prompt.slice(endIndex);
+}
+
+/**
+ * Remove all fenced code blocks (``` ... ```) within a specific ## section.
+ */
+function removeCodeBlocksInSection(prompt: string, header: string): string {
+  const headerIndex = prompt.indexOf(header);
+  if (headerIndex === -1) return prompt;
+
+  const afterHeader = headerIndex + header.length;
+  const nextSectionMatch = prompt.slice(afterHeader).search(/^## /m);
+  const endIndex = nextSectionMatch === -1 ? prompt.length : afterHeader + nextSectionMatch;
+
+  const sectionContent = prompt.slice(headerIndex, endIndex);
+  // Remove fenced code blocks (``` ... ```)
+  const trimmedSection = sectionContent.replace(/```[\s\S]*?```\n?/g, '');
+
+  return prompt.slice(0, headerIndex) + trimmedSection + prompt.slice(endIndex);
 }
 
 /**
@@ -988,7 +1268,7 @@ function formatFileServerSection(port?: number, tunnelUrl?: string): string {
     `- **Direct URL:** \`${localhostUrl}/shared/<filename>\` — link the user directly to the generated file`,
     `- **Shareable link:** Created automatically when you use a SHARE marker — includes a UUID and 24-hour expiry`,
     '',
-    `**Note:** These URLs are only accessible on localhost. Files are not reachable from the internet or other devices unless a tunnel is configured.`,
+    `**Note:** When responding to remote channel users (telegram, whatsapp), do NOT include localhost URLs in your response — they cannot access them. Use SHARE:telegram or SHARE:whatsapp to send files as native attachments instead. For HTML reports, use SHARE:github-pages to create a public URL. Localhost URLs are fine for console and webchat users.`,
     '',
     `Workers should write output files to \`.openbridge/generated/\` and you can reference them using \`${localhostUrl}/shared/<filename>\` in your response.`,
     '',
@@ -1024,6 +1304,8 @@ function formatAppServerSection(
     '',
     '- **APP:start** — starts the app at the given path. The marker is replaced in your response with the app URL (public URL when a tunnel is active, localhost URL otherwise).',
     '- **APP:stop** — stops a running app by its ID. Use `/apps` to list running apps and their IDs.',
+    '',
+    '**Important:** APP:start returns a localhost URL by default. If the user is on a remote channel (telegram/whatsapp) and no tunnel is configured, the system will automatically attempt to start a tunnel or fall back to sending the HTML file as an attachment. You can help by using SHARE:github-pages for static HTML reports (guaranteed public URL) and reserving APP:start for interactive apps that need a server.',
     '',
     '### How to Create an App',
     '',

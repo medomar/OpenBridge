@@ -9,6 +9,7 @@ import {
   buildConfig,
   runInit,
   promptAIToolInstallation,
+  promptTrustLevel,
   setupClaudeAuth,
   validateAndFixWhitelist,
   promptWhitelist,
@@ -223,6 +224,49 @@ describe('buildConfig', () => {
     const channels = config['channels'] as Array<{ type: string; options?: unknown }>;
     expect(channels[0]).not.toHaveProperty('options');
   });
+
+  it('should include security.trustLevel when trustLevel is trusted', () => {
+    const config = buildConfig({
+      connector: 'console',
+      workspacePath: '/home/user/project',
+      trustLevel: 'trusted',
+    });
+
+    expect(config).toHaveProperty('security');
+    const security = config['security'] as Record<string, unknown>;
+    expect(security['trustLevel']).toBe('trusted');
+  });
+
+  it('should include security.trustLevel when trustLevel is sandbox', () => {
+    const config = buildConfig({
+      connector: 'console',
+      workspacePath: '/home/user/project',
+      trustLevel: 'sandbox',
+    });
+
+    expect(config).toHaveProperty('security');
+    const security = config['security'] as Record<string, unknown>;
+    expect(security['trustLevel']).toBe('sandbox');
+  });
+
+  it('should omit security section when trustLevel is standard (clean default)', () => {
+    const config = buildConfig({
+      connector: 'console',
+      workspacePath: '/home/user/project',
+      trustLevel: 'standard',
+    });
+
+    expect(config).not.toHaveProperty('security');
+  });
+
+  it('should omit security section when trustLevel is undefined', () => {
+    const config = buildConfig({
+      connector: 'console',
+      workspacePath: '/home/user/project',
+    });
+
+    expect(config).not.toHaveProperty('security');
+  });
 });
 
 describe('runInit', () => {
@@ -256,6 +300,7 @@ describe('runInit', () => {
       '+1234567890', // whitelist phone numbers (step 7)
       '', // confirm phone list (triggered by "Phone numbers to whitelist:" output)
       '1', // default role: owner (step 8)
+      '', // trust level: standard (default)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -283,6 +328,7 @@ describe('runInit', () => {
       '/home/user/my-project', // workspace path
       '5', // connector: Console
       '1', // default role: owner (step 8)
+      '', // trust level: standard (default)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -304,6 +350,7 @@ describe('runInit', () => {
       '/home/user/project', // workspace path
       '', // empty = default console
       '1', // default role: owner (step 8)
+      '', // trust level: standard (default)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -326,6 +373,7 @@ describe('runInit', () => {
       '+555', // whitelist phone numbers (step 7)
       '', // confirm phone list (triggered by "Phone numbers to whitelist:" output)
       '1', // default role: owner (step 8)
+      '', // trust level: standard (default)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -344,6 +392,7 @@ describe('runInit', () => {
       '', // empty workspace path → defaults to cwd
       '', // connector (default console)
       '1', // default role: owner (step 8)
+      '', // trust level: standard (default)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -366,6 +415,7 @@ describe('runInit', () => {
       '', // empty whitelist → warns and loops (step 7)
       'skip', // skip whitelist on retry (with security warning)
       '1', // default role: owner (step 8)
+      '', // trust level: standard (default)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -412,6 +462,7 @@ describe('runInit', () => {
       '+1234567890', // whitelist phone numbers (step 7)
       '', // confirm phone list (triggered by "Phone numbers to whitelist:" output)
       '1', // default role: owner (step 8)
+      '', // trust level: standard (default)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -432,6 +483,7 @@ describe('runInit', () => {
       '2', // connector: Telegram
       '123456:ABC-DEF', // bot token
       '1', // default role: owner (step 8)
+      '', // trust level: standard (default)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -469,6 +521,7 @@ describe('runInit', () => {
       'MTk4NjIy.discord-token', // bot token
       '123456789012345678', // application ID
       '1', // default role: owner (step 8)
+      '', // trust level: standard (default)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -507,6 +560,7 @@ describe('runInit', () => {
       'some-bot-token', // bot token
       '', // skip application ID
       '1', // default role: owner (step 8)
+      '', // trust level: standard (default)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -531,6 +585,7 @@ describe('runInit', () => {
       '4', // connector: WebChat
       '8080', // custom port
       '1', // default role: owner (step 8)
+      '', // trust level: standard (default)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -554,6 +609,7 @@ describe('runInit', () => {
       '4', // connector: WebChat
       '', // empty → default port 3000
       '1', // default role: owner (step 8)
+      '', // trust level: standard (default)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -576,6 +632,7 @@ describe('runInit', () => {
       '2', // connector: Telegram
       'not-a-valid-token', // invalid token format
       '1', // default role: owner (step 8)
+      '', // trust level: standard (default)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -594,6 +651,7 @@ describe('runInit', () => {
       '+1234567890', // whitelist phone numbers (step 7)
       '', // confirm phone list (triggered by "Phone numbers to whitelist:" output)
       '1', // default role: owner (step 8)
+      '', // trust level: standard (default)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -610,6 +668,7 @@ describe('runInit', () => {
       '/home/user/project',
       '5', // connector: Console
       '1', // default role: owner (step 8)
+      '', // trust level: standard (default)
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -627,6 +686,7 @@ describe('runInit', () => {
       '/home/user/project', // workspace path
       '5', // connector: Console
       '1', // default role: owner (step 8)
+      '', // trust level: standard (default)
       'y', // Enable MCP
       'canva', // server name
       'npx -y @anthropic/canva-mcp-server', // command
@@ -655,6 +715,7 @@ describe('runInit', () => {
       '/home/user/project', // workspace path
       '5', // connector: Console
       '1', // default role: owner (step 8)
+      '', // trust level: standard (default)
       'y', // Enable MCP
       'done', // no servers
       '~/.claude/claude_desktop_config.json', // configPath
@@ -677,6 +738,7 @@ describe('runInit', () => {
       '/home/user/project', // workspace path
       '5', // connector: Console
       '1', // default role: owner (step 8)
+      '', // trust level: standard (default)
       'y', // Enable MCP
       'done', // no servers
       '', // skip configPath
@@ -696,6 +758,7 @@ describe('runInit', () => {
       '/home/user/project', // workspace path
       '5', // connector: Console
       '1', // default role: owner (step 8)
+      '', // trust level: standard (default)
       'y', // Enable MCP
       'canva', // server 1 name
       'npx -y @anthropic/canva-mcp-server', // server 1 command
@@ -715,6 +778,65 @@ describe('runInit', () => {
     expect(servers).toHaveLength(2);
     expect(servers[0]?.name).toBe('canva');
     expect(servers[1]?.name).toBe('gmail');
+  });
+
+  it('should generate config with trusted trust level when user picks 3', async () => {
+    const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
+      '/home/user/project', // workspace path
+      '5', // connector: Console
+      '1', // default role: owner (step 8)
+      '3', // trust level: trusted
+      'n', // MCP: skip
+      'Y', // Visibility: auto-hide sensitive files
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    const raw = await readFile(testConfigPath, 'utf-8');
+    const config = JSON.parse(raw) as Record<string, unknown>;
+    expect(config).toHaveProperty('security');
+    const security = config['security'] as Record<string, unknown>;
+    expect(security['trustLevel']).toBe('trusted');
+  });
+
+  it('should generate config with sandbox trust level when user picks 1', async () => {
+    const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
+      '/home/user/project', // workspace path
+      '5', // connector: Console
+      '1', // default role: owner (step 8)
+      '1', // trust level: sandbox
+      'n', // MCP: skip
+      'Y', // Visibility: auto-hide sensitive files
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    const raw = await readFile(testConfigPath, 'utf-8');
+    const config = JSON.parse(raw) as Record<string, unknown>;
+    expect(config).toHaveProperty('security');
+    const security = config['security'] as Record<string, unknown>;
+    expect(security['trustLevel']).toBe('sandbox');
+  });
+
+  it('should omit security.trustLevel from config when user presses Enter (standard default)', async () => {
+    const { input, output } = createLineFeeder([
+      '4', // AI tool installation: skip
+      '/home/user/project', // workspace path
+      '5', // connector: Console
+      '1', // default role: owner (step 8)
+      '', // trust level: standard (default — omitted from config)
+      'n', // MCP: skip
+      'Y', // Visibility: auto-hide sensitive files
+    ]);
+
+    await runInit({ input, output, outputPath: testConfigPath });
+
+    const raw = await readFile(testConfigPath, 'utf-8');
+    const config = JSON.parse(raw) as Record<string, unknown>;
+    // standard is the default — should be omitted from generated config
+    expect(config).not.toHaveProperty('security');
   });
 });
 
@@ -1252,5 +1374,83 @@ describe('promptWhitelist — validation', () => {
     rl.close();
 
     expect(written.join('')).toContain('(fixed)');
+  });
+});
+
+// ── promptTrustLevel() ────────────────────────────────────────────────────────
+
+describe('promptTrustLevel', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns trusted when user picks 3', async () => {
+    const { input, output } = createLineFeeder(['3']);
+    const rl = createInterface({ input, output });
+    const written: string[] = [];
+
+    const result = await promptTrustLevel(rl, (t) => written.push(t));
+    rl.close();
+
+    expect(result).toBe('trusted');
+  });
+
+  it('returns sandbox when user picks 1', async () => {
+    const { input, output } = createLineFeeder(['1']);
+    const rl = createInterface({ input, output });
+    const written: string[] = [];
+
+    const result = await promptTrustLevel(rl, (t) => written.push(t));
+    rl.close();
+
+    expect(result).toBe('sandbox');
+  });
+
+  it('returns standard when user presses Enter (empty input)', async () => {
+    const { input, output } = createLineFeeder(['']);
+    const rl = createInterface({ input, output });
+    const written: string[] = [];
+
+    const result = await promptTrustLevel(rl, (t) => written.push(t));
+    rl.close();
+
+    expect(result).toBe('standard');
+  });
+
+  it('returns standard when user picks 2 explicitly', async () => {
+    const { input, output } = createLineFeeder(['2']);
+    const rl = createInterface({ input, output });
+    const written: string[] = [];
+
+    const result = await promptTrustLevel(rl, (t) => written.push(t));
+    rl.close();
+
+    expect(result).toBe('standard');
+  });
+
+  it('retries on invalid input and accepts valid input on retry', async () => {
+    const { input, output } = createLineFeeder(['9', '3']);
+    const rl = createInterface({ input, output });
+    const written: string[] = [];
+
+    const result = await promptTrustLevel(rl, (t) => written.push(t));
+    rl.close();
+
+    expect(result).toBe('trusted');
+    expect(written.join('')).toContain('Error');
+  });
+
+  it('shows the trust level options in the prompt', async () => {
+    const { input, output } = createLineFeeder(['2']);
+    const rl = createInterface({ input, output });
+    const written: string[] = [];
+
+    await promptTrustLevel(rl, (t) => written.push(t));
+    rl.close();
+
+    const text = written.join('');
+    expect(text).toContain('sandbox');
+    expect(text).toContain('standard');
+    expect(text).toContain('trusted');
   });
 });

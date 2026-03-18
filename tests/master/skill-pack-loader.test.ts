@@ -462,7 +462,7 @@ describe('selectSkillPackForTask', () => {
   });
 
   it('returns undefined when no keywords match', () => {
-    const result = selectSkillPackForTask('deploy the application to production', packs);
+    const result = selectSkillPackForTask('fix the bug in the code', packs);
     expect(result).toBeUndefined();
   });
 

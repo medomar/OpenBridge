@@ -2,9 +2,12 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   generateMasterSystemPrompt,
   formatPreFetchedKnowledgeSection,
+  trimPromptToFit,
 } from '../../src/master/master-system-prompt.js';
 import type { MasterSystemPromptContext } from '../../src/master/master-system-prompt.js';
 import type { DiscoveredTool } from '../../src/types/discovery.js';
+import type { MCPServer } from '../../src/types/config.js';
+import type { SkillPack } from '../../src/types/agent.js';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
@@ -178,6 +181,107 @@ describe('generateMasterSystemPrompt', () => {
     expect(prompt).toContain('HTML report');
     expect(prompt).toContain('Small text results');
   });
+
+  it('stays under 55K chars for a realistic config with 6 tools, 4 MCP servers, and 3 skill packs', () => {
+    const tools: DiscoveredTool[] = [
+      {
+        name: 'claude',
+        path: '/usr/local/bin/claude',
+        version: '1.0.0',
+        role: 'master',
+        capabilities: ['code-analysis', 'task-execution'],
+        available: true,
+      },
+      {
+        name: 'codex',
+        path: '/usr/local/bin/codex',
+        version: '2.0.0',
+        role: 'specialist',
+        capabilities: ['code-generation'],
+        available: true,
+      },
+      {
+        name: 'aider',
+        path: '/usr/local/bin/aider',
+        version: '0.50.0',
+        role: 'specialist',
+        capabilities: ['code-edit'],
+        available: true,
+      },
+      {
+        name: 'gpt4',
+        path: '/usr/local/bin/gpt4',
+        version: '4.0.0',
+        role: 'specialist',
+        capabilities: ['analysis'],
+        available: true,
+      },
+      {
+        name: 'llama',
+        path: '/usr/local/bin/llama',
+        version: '3.0.0',
+        role: 'backup',
+        capabilities: ['summarization'],
+        available: true,
+      },
+      {
+        name: 'gemini',
+        path: '/usr/local/bin/gemini',
+        version: '1.5.0',
+        role: 'specialist',
+        capabilities: ['multimodal'],
+        available: true,
+      },
+    ];
+
+    const mcpServers: MCPServer[] = [
+      { name: 'gmail', command: 'npx', args: ['@modelcontextprotocol/server-gmail'] },
+      { name: 'slack', command: 'npx', args: ['@modelcontextprotocol/server-slack'] },
+      { name: 'github', command: 'npx', args: ['@modelcontextprotocol/server-github'] },
+      { name: 'canva', command: 'npx', args: ['@modelcontextprotocol/server-canva'] },
+    ];
+
+    const skillPacks: SkillPack[] = [
+      {
+        name: 'security-audit',
+        description: 'Security auditing best practices and vulnerability scanning',
+        toolProfile: 'read-only',
+        systemPromptExtension: 'Perform thorough security analysis on the codebase.',
+        requiredTools: [],
+        tags: ['security'],
+        isUserDefined: false,
+      },
+      {
+        name: 'code-review',
+        description: 'Code quality, maintainability, and review guidelines',
+        toolProfile: 'code-edit',
+        systemPromptExtension: 'Review code for quality and suggest improvements.',
+        requiredTools: [],
+        tags: ['quality'],
+        isUserDefined: false,
+      },
+      {
+        name: 'data-analysis',
+        description: 'Data science analysis and reporting procedures',
+        toolProfile: 'full-access',
+        systemPromptExtension: 'Analyse data with standard data-science libraries.',
+        requiredTools: [],
+        tags: ['data'],
+        isUserDefined: false,
+      },
+    ];
+
+    const context: MasterSystemPromptContext = {
+      workspacePath: '/home/user/realistic-project',
+      masterToolName: 'claude',
+      discoveredTools: tools,
+      mcpServers,
+      availableSkillPacks: skillPacks,
+    };
+
+    const prompt = generateMasterSystemPrompt(context);
+    expect(prompt.length).toBeLessThan(55_000);
+  });
 });
 
 describe('formatPreFetchedKnowledgeSection', () => {
@@ -206,6 +310,27 @@ describe('formatPreFetchedKnowledgeSection', () => {
     const raw = 'Line 1\nLine 2\nLine 3';
     const result = formatPreFetchedKnowledgeSection(raw);
     expect(result).toContain('Line 1\nLine 2\nLine 3');
+  });
+});
+
+describe('trimPromptToFit', () => {
+  it('returns the prompt unchanged when it is already under maxChars', () => {
+    const short = 'A short prompt that fits easily.';
+    expect(trimPromptToFit(short, 50_000)).toBe(short);
+  });
+
+  it('reduces a 60K+ prompt to under 50K by removing the Deep Mode section', () => {
+    // Build a prompt that exceeds 50K with a removable ## Deep Mode section
+    const preamble = 'x'.repeat(35_000);
+    const deepModeSection = '\n## Deep Mode\n\n' + 'y'.repeat(15_000) + '\n\n';
+    const tail = '## How to Spawn Workers\n\n' + 'z'.repeat(8_000);
+    const prompt = preamble + deepModeSection + tail;
+
+    // Confirm the input is large enough to need trimming
+    expect(prompt.length).toBeGreaterThan(50_000);
+
+    const result = trimPromptToFit(prompt, 50_000);
+    expect(result.length).toBeLessThanOrEqual(50_000);
   });
 });
 

@@ -257,6 +257,62 @@ export function getModelStatsForTask(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Task Efficiency (OB-1572)
+// ---------------------------------------------------------------------------
+
+export interface TaskEfficiencyMetrics {
+  turnsUsed: number;
+  workerCount: number;
+  durationMs: number;
+}
+
+export interface TaskEfficiencyRecord {
+  task_class: string;
+  avg_turns: number;
+  avg_workers: number;
+  sample_count: number;
+  updated_at: string;
+}
+
+/**
+ * UPSERT into `task_efficiency` — incrementally updates running averages for
+ * turns, workers, and sample count for a given task class.
+ */
+export function recordTaskEfficiency(
+  db: Database.Database,
+  taskClass: string,
+  metrics: TaskEfficiencyMetrics,
+): void {
+  const now = new Date().toISOString();
+
+  db.prepare(
+    `INSERT INTO task_efficiency (task_class, avg_turns, avg_workers, sample_count, updated_at)
+     VALUES (?, ?, ?, 1, ?)
+     ON CONFLICT(task_class) DO UPDATE SET
+       avg_turns    = (avg_turns * sample_count + excluded.avg_turns) / (sample_count + 1),
+       avg_workers  = (avg_workers * sample_count + excluded.avg_workers) / (sample_count + 1),
+       sample_count = sample_count + 1,
+       updated_at   = excluded.updated_at`,
+  ).run(taskClass, metrics.turnsUsed, metrics.workerCount, now);
+}
+
+/**
+ * Return efficiency stats for a given task class.
+ * Returns null when no data exists.
+ */
+export function getTaskEfficiency(
+  db: Database.Database,
+  taskClass: string,
+): TaskEfficiencyRecord | null {
+  const row = db
+    .prepare(
+      `SELECT task_class, avg_turns, avg_workers, sample_count, updated_at FROM task_efficiency WHERE task_class = ?`,
+    )
+    .get(taskClass) as TaskEfficiencyRecord | undefined;
+  return row ?? null;
+}
+
 /**
  * Return the best model for a given task type, ranked by success_rate.
  * Returns null when no learning data exists for that task type.

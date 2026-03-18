@@ -1,0 +1,616 @@
+{
+  "id": "marketplace-seller",
+  "name": "Marketplace Seller",
+  "description": "Online marketplace seller — Etsy, Amazon, eBay, Shopify, or any platform with an API. Track product listings, supplier orders, and sales performance. Connect to your marketplace API for live order sync.",
+  "skillPack": "skill-pack.md",
+  "integrations": "integrations.json",
+  "sampleQueries": [
+    "Show me all active product listings",
+    "Add a new product listing: Handmade Ceramic Mug, SKU MUG-001, price $28, initial stock 50",
+    "Create a supplier order: 100 units of raw clay from Potter Supply Co, $0.80/unit",
+    "Which products are running low on stock?",
+    "How many orders have I received this week?",
+    "What's my total revenue this month?",
+    "Mark supplier order SUP-012 as received",
+    "Show me my top 5 products by units sold this month",
+    "Update the price of listing MUG-001 to $32",
+    "Which supplier orders are pending delivery?"
+  ],
+  "doctypes": [
+    {
+      "doctype": {
+        "name": "product-listing",
+        "label_singular": "Product Listing",
+        "label_plural": "Product Listings",
+        "icon": "tag",
+        "table_name": "dt_product_listings",
+        "source": "template"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "label": "Product Name",
+          "field_type": "text",
+          "required": true,
+          "searchable": true,
+          "sort_order": 0
+        },
+        {
+          "name": "sku",
+          "label": "SKU",
+          "field_type": "text",
+          "required": true,
+          "searchable": true,
+          "sort_order": 1
+        },
+        {
+          "name": "marketplace_listing_id",
+          "label": "Marketplace Listing ID",
+          "field_type": "text",
+          "searchable": true,
+          "sort_order": 2
+        },
+        {
+          "name": "description",
+          "label": "Description",
+          "field_type": "longtext",
+          "sort_order": 3
+        },
+        {
+          "name": "category",
+          "label": "Category",
+          "field_type": "text",
+          "searchable": true,
+          "sort_order": 4
+        },
+        {
+          "name": "price",
+          "label": "Selling Price",
+          "field_type": "currency",
+          "required": true,
+          "sort_order": 5
+        },
+        {
+          "name": "cost_price",
+          "label": "Cost Price",
+          "field_type": "currency",
+          "sort_order": 6
+        },
+        {
+          "name": "margin",
+          "label": "Margin (%)",
+          "field_type": "number",
+          "sort_order": 7,
+          "formula": "((price - cost_price) / price) * 100",
+          "depends_on": "price,cost_price"
+        },
+        {
+          "name": "stock_quantity",
+          "label": "Stock Quantity",
+          "field_type": "number",
+          "required": true,
+          "sort_order": 8
+        },
+        {
+          "name": "reorder_threshold",
+          "label": "Reorder Threshold",
+          "field_type": "number",
+          "sort_order": 9
+        },
+        {
+          "name": "reorder_quantity",
+          "label": "Reorder Quantity",
+          "field_type": "number",
+          "sort_order": 10
+        },
+        {
+          "name": "supplier_id",
+          "label": "Primary Supplier",
+          "field_type": "text",
+          "searchable": true,
+          "sort_order": 11
+        },
+        {
+          "name": "units_sold_total",
+          "label": "Total Units Sold",
+          "field_type": "number",
+          "sort_order": 12
+        },
+        {
+          "name": "total_revenue",
+          "label": "Total Revenue",
+          "field_type": "currency",
+          "sort_order": 13
+        },
+        { "name": "notes", "label": "Notes", "field_type": "longtext", "sort_order": 14 }
+      ],
+      "states": [
+        {
+          "name": "draft",
+          "label": "Draft",
+          "color": "gray",
+          "is_initial": true,
+          "sort_order": 0
+        },
+        { "name": "active", "label": "Active", "color": "green", "sort_order": 1 },
+        { "name": "low_stock", "label": "Low Stock", "color": "orange", "sort_order": 2 },
+        {
+          "name": "out_of_stock",
+          "label": "Out of Stock",
+          "color": "red",
+          "sort_order": 3
+        },
+        {
+          "name": "inactive",
+          "label": "Inactive",
+          "color": "gray",
+          "is_terminal": true,
+          "sort_order": 4
+        }
+      ],
+      "transitions": [
+        {
+          "from_state": "draft",
+          "to_state": "active",
+          "action_name": "publish",
+          "action_label": "Publish Listing"
+        },
+        {
+          "from_state": "active",
+          "to_state": "low_stock",
+          "action_name": "flag_low_stock",
+          "action_label": "Flag Low Stock"
+        },
+        {
+          "from_state": "low_stock",
+          "to_state": "active",
+          "action_name": "restock",
+          "action_label": "Mark Restocked"
+        },
+        {
+          "from_state": "low_stock",
+          "to_state": "out_of_stock",
+          "action_name": "deplete",
+          "action_label": "Mark Out of Stock"
+        },
+        {
+          "from_state": "out_of_stock",
+          "to_state": "active",
+          "action_name": "restock",
+          "action_label": "Mark Restocked"
+        },
+        {
+          "from_state": "active",
+          "to_state": "inactive",
+          "action_name": "deactivate",
+          "action_label": "Deactivate"
+        },
+        {
+          "from_state": "inactive",
+          "to_state": "active",
+          "action_name": "reactivate",
+          "action_label": "Reactivate"
+        }
+      ],
+      "hooks": [
+        {
+          "event": "after_update",
+          "action_type": "run_workflow",
+          "action_config": {
+            "condition": "stock_quantity <= reorder_threshold AND reorder_threshold > 0",
+            "workflow": "low-stock-reorder"
+          }
+        }
+      ],
+      "relations": []
+    },
+    {
+      "doctype": {
+        "name": "supplier-order",
+        "label_singular": "Supplier Order",
+        "label_plural": "Supplier Orders",
+        "icon": "truck",
+        "table_name": "dt_supplier_orders",
+        "source": "template"
+      },
+      "fields": [
+        {
+          "name": "order_number",
+          "label": "Order Number",
+          "field_type": "text",
+          "required": true,
+          "searchable": true,
+          "sort_order": 0
+        },
+        {
+          "name": "supplier_name",
+          "label": "Supplier Name",
+          "field_type": "text",
+          "required": true,
+          "searchable": true,
+          "sort_order": 1
+        },
+        {
+          "name": "supplier_contact",
+          "label": "Supplier Contact",
+          "field_type": "text",
+          "sort_order": 2
+        },
+        {
+          "name": "supplier_email",
+          "label": "Supplier Email",
+          "field_type": "email",
+          "sort_order": 3
+        },
+        {
+          "name": "product_listing_id",
+          "label": "Product",
+          "field_type": "link",
+          "sort_order": 4,
+          "link_doctype": "product-listing"
+        },
+        {
+          "name": "product_description",
+          "label": "Product / Item Description",
+          "field_type": "text",
+          "required": true,
+          "searchable": true,
+          "sort_order": 5
+        },
+        {
+          "name": "quantity_ordered",
+          "label": "Quantity Ordered",
+          "field_type": "number",
+          "required": true,
+          "sort_order": 6
+        },
+        {
+          "name": "quantity_received",
+          "label": "Quantity Received",
+          "field_type": "number",
+          "sort_order": 7
+        },
+        {
+          "name": "unit_cost",
+          "label": "Unit Cost",
+          "field_type": "currency",
+          "required": true,
+          "sort_order": 8
+        },
+        {
+          "name": "total_cost",
+          "label": "Total Cost",
+          "field_type": "currency",
+          "sort_order": 9,
+          "formula": "quantity_ordered * unit_cost",
+          "depends_on": "quantity_ordered,unit_cost"
+        },
+        {
+          "name": "order_date",
+          "label": "Order Date",
+          "field_type": "date",
+          "required": true,
+          "sort_order": 10
+        },
+        {
+          "name": "expected_delivery_date",
+          "label": "Expected Delivery",
+          "field_type": "date",
+          "sort_order": 11
+        },
+        {
+          "name": "received_date",
+          "label": "Date Received",
+          "field_type": "date",
+          "sort_order": 12
+        },
+        {
+          "name": "tracking_number",
+          "label": "Tracking Number",
+          "field_type": "text",
+          "sort_order": 13
+        },
+        { "name": "notes", "label": "Notes", "field_type": "longtext", "sort_order": 14 }
+      ],
+      "states": [
+        {
+          "name": "draft",
+          "label": "Draft",
+          "color": "gray",
+          "is_initial": true,
+          "sort_order": 0
+        },
+        { "name": "ordered", "label": "Ordered", "color": "blue", "sort_order": 1 },
+        { "name": "in_transit", "label": "In Transit", "color": "orange", "sort_order": 2 },
+        {
+          "name": "received",
+          "label": "Received",
+          "color": "green",
+          "is_terminal": true,
+          "sort_order": 3
+        },
+        {
+          "name": "cancelled",
+          "label": "Cancelled",
+          "color": "red",
+          "is_terminal": true,
+          "sort_order": 4
+        }
+      ],
+      "transitions": [
+        {
+          "from_state": "draft",
+          "to_state": "ordered",
+          "action_name": "place_order",
+          "action_label": "Place Order"
+        },
+        {
+          "from_state": "ordered",
+          "to_state": "in_transit",
+          "action_name": "mark_shipped",
+          "action_label": "Mark Shipped"
+        },
+        {
+          "from_state": "in_transit",
+          "to_state": "received",
+          "action_name": "receive",
+          "action_label": "Mark Received"
+        },
+        {
+          "from_state": "ordered",
+          "to_state": "received",
+          "action_name": "receive",
+          "action_label": "Mark Received"
+        },
+        {
+          "from_state": "ordered",
+          "to_state": "cancelled",
+          "action_name": "cancel",
+          "action_label": "Cancel Order"
+        },
+        {
+          "from_state": "draft",
+          "to_state": "cancelled",
+          "action_name": "cancel",
+          "action_label": "Cancel"
+        }
+      ],
+      "hooks": [
+        {
+          "event": "after_insert",
+          "action_type": "send_notification",
+          "action_config": {
+            "message": "New supplier order {{order_number}}: {{quantity_ordered}} units of {{product_description}} from {{supplier_name}} — expected {{expected_delivery_date}}"
+          }
+        },
+        {
+          "event": "on_state_change",
+          "action_type": "send_notification",
+          "action_config": {
+            "condition": "new_state == 'received'",
+            "message": "Supplier order {{order_number}} received: {{quantity_received}} units of {{product_description}} from {{supplier_name}}"
+          }
+        }
+      ],
+      "relations": [
+        {
+          "from_doctype": "supplier-order",
+          "to_doctype": "product-listing",
+          "relation_type": "belongs_to",
+          "from_field": "product_listing_id",
+          "to_field": "id",
+          "label": "Replenishes product"
+        }
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "name": "Low Stock Reorder",
+      "description": "Triggered when a product's stock quantity drops to or below its reorder threshold. Checks if there's already a pending supplier order for the product before creating a new one.",
+      "trigger": {
+        "type": "event",
+        "on": "product-listing.after_update"
+      },
+      "steps": [
+        {
+          "id": "get-product-details",
+          "name": "Get product details",
+          "type": "query",
+          "config": {
+            "doctype": "product-listing",
+            "filter": "id = {{trigger.record_id}}",
+            "fields": [
+              "name",
+              "sku",
+              "stock_quantity",
+              "reorder_threshold",
+              "reorder_quantity",
+              "supplier_id",
+              "cost_price"
+            ]
+          },
+          "sort_order": 0
+        },
+        {
+          "id": "check-threshold",
+          "name": "Check if reorder is needed",
+          "type": "condition",
+          "config": {
+            "expression": "product.stock_quantity <= product.reorder_threshold && product.reorder_threshold > 0",
+            "on_false": "skip_remaining"
+          },
+          "sort_order": 1
+        },
+        {
+          "id": "check-pending-orders",
+          "name": "Check for existing pending supplier orders",
+          "type": "query",
+          "config": {
+            "doctype": "supplier-order",
+            "filter": "product_listing_id = {{trigger.record_id}} AND status IN ('draft', 'ordered', 'in_transit')",
+            "fields": ["order_number", "status", "quantity_ordered"]
+          },
+          "sort_order": 2
+        },
+        {
+          "id": "skip-if-pending",
+          "name": "Skip if there's already a pending order",
+          "type": "condition",
+          "config": {
+            "expression": "pending_orders.length === 0",
+            "on_false": "skip_remaining"
+          },
+          "sort_order": 3
+        },
+        {
+          "id": "send-reorder-alert",
+          "name": "Send low stock reorder alert",
+          "type": "send",
+          "config": {
+            "channel": "default",
+            "message": "Low Stock Alert — {{product.name}} ({{product.sku}})\nCurrent stock: {{product.stock_quantity}} units (threshold: {{product.reorder_threshold}})\nSuggested reorder: {{product.reorder_quantity}} units from {{product.supplier_id}}\nShall I create a supplier order?"
+          },
+          "sort_order": 4
+        }
+      ],
+      "status": "active"
+    },
+    {
+      "name": "New Order Notification",
+      "description": "Polls the marketplace API for new orders every 15 minutes and sends a notification for each new order received. Syncs order data to the local supplier-order log for fulfilment tracking.",
+      "trigger": {
+        "type": "schedule",
+        "cron": "*/15 * * * *"
+      },
+      "steps": [
+        {
+          "id": "fetch-new-orders",
+          "name": "Fetch new orders from marketplace API",
+          "type": "api",
+          "config": {
+            "integration": "api",
+            "operation": "listOrders",
+            "params": {
+              "status": "pending",
+              "created_after": "{{last_run_at}}"
+            }
+          },
+          "sort_order": 0
+        },
+        {
+          "id": "check-has-orders",
+          "name": "Check if any new orders arrived",
+          "type": "condition",
+          "config": {
+            "expression": "api_result.orders.length > 0",
+            "on_false": "skip_remaining"
+          },
+          "sort_order": 1
+        },
+        {
+          "id": "format-order-summary",
+          "name": "Format new order summary",
+          "type": "transform",
+          "config": {
+            "template": "New Orders ({{api_result.orders.length}}):\n{{#each api_result.orders}}\n- Order {{id}}: {{#each items}}{{quantity}}× {{title}}{{/each}} — ${{total}} from {{buyer_name}}\n{{/each}}"
+          },
+          "sort_order": 2
+        },
+        {
+          "id": "send-order-notification",
+          "name": "Send new order notification",
+          "type": "send",
+          "config": {
+            "channel": "default",
+            "message": "New Marketplace Orders:\n{{formatted_output}}"
+          },
+          "sort_order": 3
+        }
+      ],
+      "status": "active"
+    },
+    {
+      "name": "Weekly Sales Report",
+      "description": "Every Monday at 8am, fetches last week's sales data from the marketplace API and combines it with local product listing data to produce a ranked performance report.",
+      "trigger": {
+        "type": "schedule",
+        "cron": "0 8 * * 1"
+      },
+      "steps": [
+        {
+          "id": "fetch-weekly-sales",
+          "name": "Fetch last week's sales from marketplace API",
+          "type": "api",
+          "config": {
+            "integration": "api",
+            "operation": "getSalesReport",
+            "params": {
+              "start_date": "{{date('now', '-7 days', 'start of day')}}",
+              "end_date": "{{date('now', '-1 day', 'end of day')}}"
+            }
+          },
+          "sort_order": 0
+        },
+        {
+          "id": "get-product-listings",
+          "name": "Get all active product listings",
+          "type": "query",
+          "config": {
+            "doctype": "product-listing",
+            "filter": "status IN ('active', 'low_stock')",
+            "fields": [
+              "name",
+              "sku",
+              "marketplace_listing_id",
+              "price",
+              "cost_price",
+              "stock_quantity",
+              "reorder_threshold"
+            ]
+          },
+          "sort_order": 1
+        },
+        {
+          "id": "get-pending-supplier-orders",
+          "name": "Get pending supplier orders",
+          "type": "query",
+          "config": {
+            "doctype": "supplier-order",
+            "filter": "status IN ('ordered', 'in_transit')",
+            "fields": [
+              "order_number",
+              "product_listing_id",
+              "quantity_ordered",
+              "expected_delivery_date",
+              "status"
+            ]
+          },
+          "sort_order": 2
+        },
+        {
+          "id": "generate-weekly-report",
+          "name": "AI generates weekly sales report",
+          "type": "ai",
+          "config": {
+            "prompt": "Generate a weekly sales report from the following data:\n\nMarketplace Sales (last 7 days): {{api_sales_report}}\n\nActive Product Listings: {{product_listings}}\n\nPending Supplier Orders: {{pending_supplier_orders}}\n\nInclude: (1) Total orders and revenue for the week, (2) Top 5 products by units sold, (3) Top 5 products by revenue, (4) Products with stock below reorder threshold (flag urgently if stock < 5), (5) Pending restocks and expected delivery dates, (6) Estimated days of stock remaining for top sellers (stock_quantity / avg daily sales). Keep it concise — bullet points preferred.",
+            "tool_profile": "read-only",
+            "max_turns": 2
+          },
+          "sort_order": 3
+        },
+        {
+          "id": "send-weekly-report",
+          "name": "Send weekly sales report",
+          "type": "send",
+          "config": {
+            "channel": "default",
+            "message": "Weekly Sales Report:\n{{ai_output}}"
+          },
+          "sort_order": 4
+        }
+      ],
+      "status": "active"
+    }
+  ]
+}

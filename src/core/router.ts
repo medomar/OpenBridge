@@ -16,8 +16,14 @@ import type { MessageQueue } from './queue.js';
 import type { RiskLevel, DeepPhase, DocumentFileFormat } from '../types/agent.js';
 import { PROFILE_RISK_MAP, BuiltInProfileNameSchema } from '../types/agent.js';
 import type { SkillManager } from '../master/skill-manager.js';
+import type { IntegrationHub } from '../integrations/hub.js';
+import type { WorkflowStore } from '../workflows/workflow-store.js';
+import type { WorkflowEngine } from '../workflows/engine.js';
+import type { WorkflowScheduler } from '../workflows/scheduler.js';
+import type { CredentialStore } from '../integrations/credential-store.js';
 import type { ParsedSpawnMarker } from '../master/spawn-parser.js';
 import { extractTaskSummaries } from '../master/spawn-parser.js';
+import type { PermissionRelay } from './permission-relay.js';
 import type { FileServer } from './file-server.js';
 import { ProviderError } from '../providers/claude-code/provider-error.js';
 import { OutputMarkerProcessor } from './output-marker-processor.js';
@@ -347,6 +353,11 @@ export class Router {
   private appServer?: AppServer;
   private relay?: InteractionRelay;
   private skillManager?: SkillManager;
+  private integrationHub?: IntegrationHub;
+  private credentialStore?: CredentialStore;
+  private workflowStore?: WorkflowStore;
+  private workflowEngine?: WorkflowEngine;
+  private workflowScheduler?: WorkflowScheduler;
   /** Pending "stop all" confirmations — keyed by sender, value contains expiresAt timestamp. */
   private readonly pendingStopConfirmations = new Map<string, PendingConfirmation>();
   /** Pending high-risk spawn confirmations — keyed by sender, awaiting user "go" or "skip". */
@@ -378,6 +389,10 @@ export class Router {
   private readonly commandHandlers: CommandHandlers;
   /** Extracted output marker processor — delegates to OutputMarkerProcessor class (OB-1284). */
   private readonly outputMarkerProcessor: OutputMarkerProcessor;
+  /** Permission relay for interactive tool approval via messaging channels (OB-1499). */
+  private permissionRelay?: PermissionRelay;
+  /** On-demand tunnel starter — wired in by Bridge.start() for remote channel APP delivery (OB-1633). */
+  private ensureTunnelFn?: () => Promise<string | null>;
 
   constructor(
     defaultProvider: string,
@@ -398,6 +413,11 @@ export class Router {
       getRelay: () => this.relay,
       getConnectors: () => this.connectors,
       getAuth: () => this.auth,
+      getWorkflowStore: () => this.workflowStore,
+      getWorkflowEngine: () => this.workflowEngine,
+      getWorkflowScheduler: () => this.workflowScheduler,
+      getIntegrationHub: () => this.integrationHub,
+      ensureTunnel: () => (this.ensureTunnelFn ? this.ensureTunnelFn() : Promise.resolve(null)),
     });
 
     // Initialize command handlers with deps that reference Router's mutable state
@@ -409,8 +429,13 @@ export class Router {
       getAppServer: () => this.appServer,
       getSkillManager: () => this.skillManager,
       getWorkspacePath: () => this.workspacePath,
+      getIntegrationHub: () => this.integrationHub,
+      getCredentialStore: () => this.credentialStore,
+      getWorkflowStore: () => this.workflowStore,
+      getWorkflowEngine: () => this.workflowEngine,
       getConnectors: () => this.connectors,
       getProviders: () => this.providers,
+      getSecurityConfig: () => this.securityConfig,
       getPendingStopConfirmations: () => this.pendingStopConfirmations,
       getSessionGrantedTools: () => this.sessionGrantedTools,
       getDetectedSecrets: () => this.detectedSecrets,
@@ -442,6 +467,36 @@ export class Router {
   setSkillManager(skillManager: SkillManager): void {
     this.skillManager = skillManager;
     logger.info('Router configured with SkillManager (/skills command enabled)');
+  }
+
+  /** Set the IntegrationHub — exposes connected integrations to command handlers */
+  setIntegrationHub(hub: IntegrationHub): void {
+    this.integrationHub = hub;
+    logger.info('Router configured with IntegrationHub');
+  }
+
+  /** Set the CredentialStore — used by /connect to encrypt and persist integration credentials */
+  setCredentialStore(store: CredentialStore): void {
+    this.credentialStore = store;
+    logger.info('Router configured with CredentialStore');
+  }
+
+  /** Set workflow components — enables [WORKFLOW:create] marker support */
+  setWorkflowComponents(
+    store: WorkflowStore,
+    engine: WorkflowEngine,
+    scheduler: WorkflowScheduler,
+  ): void {
+    this.workflowStore = store;
+    this.workflowEngine = engine;
+    this.workflowScheduler = scheduler;
+    logger.info('Router configured with workflow engine (WORKFLOW markers enabled)');
+  }
+
+  /** Set the permission relay — enables interactive tool approval via messaging channels (OB-1499) */
+  setPermissionRelay(relay: PermissionRelay): void {
+    this.permissionRelay = relay;
+    logger.info('Router configured with PermissionRelay (interactive tool approval enabled)');
   }
 
   /** Set the auth service — used to whitelist-check recipients in SEND markers */
@@ -491,6 +546,12 @@ export class Router {
   setAppServer(appServer: AppServer): void {
     this.appServer = appServer;
     logger.info('Router configured with AppServer (APP markers enabled)');
+  }
+
+  /** Set the auto-tunnel function — enables on-demand tunnel for remote channel APP delivery (OB-1633) */
+  setEnsureTunnel(fn: () => Promise<string | null>): void {
+    this.ensureTunnelFn = fn;
+    logger.info('Router configured with ensureTunnel (remote channel APP:start tunnel enabled)');
   }
 
   /** Set the InteractionRelay — routes app messages to Master as app-interaction InboundMessages */
@@ -651,6 +712,24 @@ export class Router {
     markers: ParsedSpawnMarker[],
     message: InboundMessage,
   ): Promise<boolean> {
+    const trustLevel = this.securityConfig?.trustLevel ?? 'standard';
+
+    if (trustLevel === 'trusted') {
+      logger.debug({ sender }, 'Trusted mode — auto-approving worker spawn');
+      return false;
+    }
+
+    if (trustLevel === 'sandbox') {
+      const denyMsg: OutboundMessage = {
+        target: message.source,
+        recipient: sender,
+        content:
+          '⛔ Sandbox mode — high-risk operations are not available. Change trustLevel in config.json to enable.',
+      };
+      await connector.sendMessage(denyMsg);
+      return true;
+    }
+
     if (!this.securityConfig?.confirmHighRisk) return false;
 
     // Check per-user consent preference — skip confirmation when the user has opted out
@@ -1308,6 +1387,20 @@ export class Router {
       return;
     }
 
+    // Handle permission relay responses — intercept YES/NO/ALLOW/DENY replies
+    // when a permission request is pending for this user (OB-1499)
+    if (this.permissionRelay?.hasPending(message.sender)) {
+      const consumed = this.permissionRelay.handleResponse(message.sender, message.content);
+      if (consumed) {
+        logger.info(
+          { sender: message.sender, content: message.content.trim() },
+          'Permission response consumed',
+        );
+        return;
+      }
+      // Not a valid YES/NO — fall through to normal routing
+    }
+
     // Handle built-in "status" command — intercept before routing to Master AI
     if (message.content.trim().toLowerCase() === 'status') {
       await this.handleStatusCommand(message, connector);
@@ -1542,6 +1635,17 @@ export class Router {
       return;
     }
 
+    // Detect natural-language trust intent and convert to /trust command (OB-1575)
+    const trimmedContent = message.content.trim();
+    if (
+      /^(trust\s+(all|everything|auto|it)|auto[- ]?approve(\s+all)?|approve\s+(all|everything))$/i.test(
+        trimmedContent,
+      )
+    ) {
+      logger.info('Natural language trust intent detected — routing to /trust auto');
+      message = { ...message, content: '/trust auto' };
+    }
+
     // Handle built-in "/trust" command — change consent mode (auto/edit/ask)
     if (/^\/trust(\s+.*)?$/i.test(message.content.trim())) {
       await this.handleTrustCommand(message, connector);
@@ -1581,6 +1685,65 @@ export class Router {
     // Handle built-in "/doctor" command — run health checks and send summary (OB-1693)
     if (/^\/doctor$/i.test(message.content.trim())) {
       await this.handleDoctorCommand(message, connector);
+      return;
+    }
+
+    // Handle built-in "/doctypes" command — list all DocTypes (OB-1386)
+    if (/^\/doctypes$/i.test(message.content.trim())) {
+      await this.handleDoctypesCommand(message, connector);
+      return;
+    }
+
+    // Handle built-in "/doctype <name>" command — show DocType details (OB-1386)
+    if (/^\/doctype\b/i.test(message.content.trim())) {
+      await this.handleDoctypeCommand(message, connector);
+      return;
+    }
+
+    // Handle built-in "/dt <doctype> <sub>" command — DocType record CRUD (OB-1386)
+    if (/^\/dt\b/i.test(message.content.trim())) {
+      await this.handleDtCommand(message, connector);
+      return;
+    }
+
+    // Accumulate standalone cURL messages for deferred /connect api (OB-1453)
+    // When a user sends cURL examples without /connect api, store them so they
+    // can be flushed when they say "done" or "connect".
+    if (/^curl\s/i.test(message.content.trim())) {
+      await this.commandHandlers.handleCurlAccumulationMessage(message, connector);
+      return;
+    }
+
+    // Flush cURL buffer when user says "done" or "connect" after accumulating (OB-1453)
+    if (
+      /^(?:done|connect)\s*$/i.test(message.content.trim()) &&
+      this.commandHandlers.hasPendingCurls(message.sender)
+    ) {
+      await this.handleCurlBufferFlush(message, connector);
+      return;
+    }
+
+    // Handle built-in "/connect <integration> [<credential>]" command — credential collection (OB-1397)
+    if (/^\/connect(\s.*)?$/i.test(message.content.trim())) {
+      await this.handleConnectCommand(message, connector);
+      return;
+    }
+
+    // Handle built-in "/integrations" command — list all registered integrations (OB-1398)
+    if (/^\/integrations\b/i.test(message.content.trim())) {
+      await this.handleIntegrationsCommand(message, connector);
+      return;
+    }
+
+    // Handle built-in "/workflows" command — list/enable/disable/runs/delete (OB-1431)
+    if (/^\/workflows(\b.*)?$/i.test(message.content.trim())) {
+      await this.handleWorkflowsCommand(message, connector);
+      return;
+    }
+
+    // Handle built-in "/process <file>" command — extract document entities (OB-1349)
+    if (/^\/process(\s+.*)?$/i.test(message.content.trim())) {
+      await this.handleProcessCommand(message, connector);
       return;
     }
 
@@ -1781,6 +1944,7 @@ export class Router {
       connector,
       message.sender,
       message.id,
+      message.source,
     );
 
     // Send result back
@@ -2070,6 +2234,61 @@ export class Router {
 
   private async handleDoctorCommand(message: InboundMessage, connector: Connector): Promise<void> {
     return this.commandHandlers.handleDoctorCommand(message, connector);
+  }
+
+  private async handleProcessCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    return this.commandHandlers.handleProcessCommand(message, connector);
+  }
+
+  private async handleConnectCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    return this.commandHandlers.handleConnectCommand(message, connector);
+  }
+
+  /**
+   * handleCurlBufferFlush — flush accumulated cURL commands and trigger /connect api (OB-1453).
+   * Called when the user says "done" or "connect" after sending standalone cURL messages.
+   */
+  private async handleCurlBufferFlush(
+    message: InboundMessage,
+    connector: Connector,
+  ): Promise<void> {
+    const joinedCurls = this.commandHandlers.flushCurlBuffer(message.sender);
+    // Synthesize a /connect api message with the accumulated cURLs as input
+    const synthetic: InboundMessage = {
+      ...message,
+      content: `/connect api ${joinedCurls}`,
+      rawContent: `/connect api ${joinedCurls}`,
+    };
+    return this.commandHandlers.handleConnectCommand(synthetic, connector);
+  }
+
+  private async handleIntegrationsCommand(
+    message: InboundMessage,
+    connector: Connector,
+  ): Promise<void> {
+    return this.commandHandlers.handleIntegrationsCommand(message, connector);
+  }
+
+  private async handleWorkflowsCommand(
+    message: InboundMessage,
+    connector: Connector,
+  ): Promise<void> {
+    return this.commandHandlers.handleWorkflowsCommand(message, connector);
+  }
+
+  private async handleDoctypesCommand(
+    message: InboundMessage,
+    connector: Connector,
+  ): Promise<void> {
+    return this.commandHandlers.handleDoctypesCommand(message, connector);
+  }
+
+  private async handleDoctypeCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    return this.commandHandlers.handleDoctypeCommand(message, connector);
+  }
+
+  private async handleDtCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    return this.commandHandlers.handleDtCommand(message, connector);
   }
 
   private async handleHelpCommand(message: InboundMessage, connector: Connector): Promise<void> {

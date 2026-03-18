@@ -430,6 +430,392 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    version: 17,
+    description:
+      'Add processed_documents and processed_documents_fts tables for document intelligence',
+    apply: (db): void => {
+      const hasTable =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='processed_documents'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!hasTable) {
+        db.exec(`
+          CREATE TABLE processed_documents (
+            id           TEXT PRIMARY KEY,
+            filename     TEXT NOT NULL,
+            mime_type    TEXT NOT NULL,
+            file_path    TEXT NOT NULL,
+            doc_type     TEXT NOT NULL DEFAULT 'unknown',
+            raw_text     TEXT NOT NULL DEFAULT '',
+            entities     TEXT NOT NULL DEFAULT '[]',
+            relations    TEXT NOT NULL DEFAULT '[]',
+            tables       TEXT NOT NULL DEFAULT '[]',
+            metadata     TEXT NOT NULL DEFAULT '{}',
+            processed_at TEXT NOT NULL,
+            source       TEXT
+          );
+          CREATE VIRTUAL TABLE processed_documents_fts
+            USING fts5(raw_text, filename, content='processed_documents', content_rowid='rowid');
+          CREATE INDEX idx_processed_documents_mime      ON processed_documents(mime_type);
+          CREATE INDEX idx_processed_documents_processed ON processed_documents(processed_at);
+        `);
+      }
+    },
+  },
+  {
+    version: 18,
+    description:
+      'Add DocType metadata tables (doctypes, doctype_fields, doctype_states, doctype_transitions, doctype_hooks, doctype_relations, dt_series) and indexes',
+    apply: (db): void => {
+      const hasTable =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='doctypes'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!hasTable) {
+        db.exec(`
+          CREATE TABLE doctypes (
+            id              TEXT PRIMARY KEY,
+            name            TEXT NOT NULL UNIQUE,
+            label_singular  TEXT NOT NULL,
+            label_plural    TEXT NOT NULL,
+            icon            TEXT,
+            table_name      TEXT NOT NULL UNIQUE,
+            source          TEXT NOT NULL,
+            template_id     TEXT,
+            created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at      TEXT DEFAULT CURRENT_TIMESTAMP
+          );
+
+          CREATE TABLE doctype_fields (
+            id              TEXT PRIMARY KEY,
+            doctype_id      TEXT NOT NULL REFERENCES doctypes(id) ON DELETE CASCADE,
+            name            TEXT NOT NULL,
+            label           TEXT NOT NULL,
+            field_type      TEXT NOT NULL,
+            required        INTEGER DEFAULT 0,
+            default_value   TEXT,
+            options         TEXT,
+            formula         TEXT,
+            depends_on      TEXT,
+            searchable      INTEGER DEFAULT 0,
+            sort_order      INTEGER NOT NULL,
+            link_doctype    TEXT,
+            child_doctype   TEXT,
+            UNIQUE(doctype_id, name)
+          );
+
+          CREATE TABLE doctype_states (
+            id              TEXT PRIMARY KEY,
+            doctype_id      TEXT NOT NULL REFERENCES doctypes(id) ON DELETE CASCADE,
+            name            TEXT NOT NULL,
+            label           TEXT NOT NULL,
+            color           TEXT DEFAULT 'gray',
+            is_initial      INTEGER DEFAULT 0,
+            is_terminal     INTEGER DEFAULT 0,
+            sort_order      INTEGER NOT NULL,
+            UNIQUE(doctype_id, name)
+          );
+
+          CREATE TABLE doctype_transitions (
+            id              TEXT PRIMARY KEY,
+            doctype_id      TEXT NOT NULL REFERENCES doctypes(id) ON DELETE CASCADE,
+            from_state      TEXT NOT NULL,
+            to_state        TEXT NOT NULL,
+            action_name     TEXT NOT NULL,
+            action_label    TEXT NOT NULL,
+            allowed_roles   TEXT,
+            condition       TEXT,
+            UNIQUE(doctype_id, from_state, action_name)
+          );
+
+          CREATE TABLE doctype_hooks (
+            id              TEXT PRIMARY KEY,
+            doctype_id      TEXT NOT NULL REFERENCES doctypes(id) ON DELETE CASCADE,
+            event           TEXT NOT NULL,
+            action_type     TEXT NOT NULL,
+            action_config   TEXT NOT NULL,
+            sort_order      INTEGER DEFAULT 0,
+            enabled         INTEGER DEFAULT 1
+          );
+
+          CREATE TABLE doctype_relations (
+            id              TEXT PRIMARY KEY,
+            from_doctype    TEXT NOT NULL REFERENCES doctypes(id) ON DELETE CASCADE,
+            to_doctype      TEXT NOT NULL REFERENCES doctypes(id) ON DELETE CASCADE,
+            relation_type   TEXT NOT NULL,
+            from_field      TEXT NOT NULL,
+            to_field        TEXT DEFAULT 'id',
+            label           TEXT
+          );
+
+          CREATE TABLE dt_series (
+            prefix          TEXT PRIMARY KEY,
+            current_value   INTEGER DEFAULT 0
+          );
+
+          CREATE INDEX idx_doctype_fields_doctype
+            ON doctype_fields(doctype_id);
+          CREATE INDEX idx_doctype_states_doctype
+            ON doctype_states(doctype_id);
+          CREATE INDEX idx_doctype_transitions_doctype
+            ON doctype_transitions(doctype_id);
+        `);
+      }
+    },
+  },
+  {
+    version: 19,
+    description: 'Add integration_credentials table for AES-256-GCM encrypted credential storage',
+    apply: (db): void => {
+      const hasTable =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='integration_credentials'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!hasTable) {
+        db.exec(`
+          CREATE TABLE integration_credentials (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            integration_name TEXT    NOT NULL UNIQUE,
+            encrypted        TEXT    NOT NULL,
+            iv               TEXT    NOT NULL,
+            auth_tag         TEXT    NOT NULL,
+            health_status    TEXT    NOT NULL DEFAULT 'unknown',
+            created_at       TEXT    NOT NULL,
+            updated_at       TEXT    NOT NULL
+          );
+          CREATE INDEX idx_integration_credentials_name ON integration_credentials(integration_name);
+        `);
+      }
+    },
+  },
+  {
+    version: 20,
+    description:
+      'Add workflow engine tables (workflows, workflow_runs, workflow_approvals) and indexes',
+    apply: (db): void => {
+      const hasTable =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='workflows'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!hasTable) {
+        db.exec(`
+          CREATE TABLE workflows (
+            id             TEXT    PRIMARY KEY,
+            name           TEXT    NOT NULL,
+            description    TEXT,
+            enabled        INTEGER NOT NULL DEFAULT 1,
+            trigger_type   TEXT    NOT NULL,
+            trigger_config TEXT    NOT NULL,
+            steps          TEXT    NOT NULL,
+            created_by     TEXT    NOT NULL DEFAULT 'system',
+            created_at     TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at     TEXT,
+            last_run       TEXT,
+            run_count      INTEGER NOT NULL DEFAULT 0,
+            failure_count  INTEGER NOT NULL DEFAULT 0,
+            success_count  INTEGER NOT NULL DEFAULT 0
+          );
+
+          CREATE TABLE workflow_runs (
+            id           TEXT    PRIMARY KEY,
+            workflow_id  TEXT    NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+            started_at   TEXT    NOT NULL,
+            completed_at TEXT,
+            status       TEXT    NOT NULL,
+            trigger_data TEXT,
+            step_results TEXT,
+            error        TEXT,
+            duration_ms  INTEGER
+          );
+
+          CREATE TABLE workflow_approvals (
+            id              TEXT    PRIMARY KEY,
+            workflow_run_id TEXT    NOT NULL REFERENCES workflow_runs(id) ON DELETE CASCADE,
+            step_index      INTEGER NOT NULL,
+            message         TEXT    NOT NULL,
+            options         TEXT    NOT NULL,
+            sent_to         TEXT    NOT NULL,
+            sent_at         TEXT    NOT NULL,
+            responded_at    TEXT,
+            response        TEXT,
+            timeout_at      TEXT    NOT NULL
+          );
+
+          CREATE INDEX idx_workflows_enabled     ON workflows(enabled);
+          CREATE INDEX idx_workflows_trigger_type ON workflows(trigger_type);
+          CREATE INDEX idx_workflow_runs_workflow ON workflow_runs(workflow_id);
+          CREATE INDEX idx_workflow_runs_status   ON workflow_runs(status);
+          CREATE INDEX idx_workflow_runs_started  ON workflow_runs(started_at);
+          CREATE INDEX idx_workflow_approvals_run ON workflow_approvals(workflow_run_id);
+        `);
+      }
+    },
+  },
+  {
+    version: 21,
+    description: 'Add integration_capabilities table for role-based capability tagging',
+    apply: (db): void => {
+      const hasTable =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='integration_capabilities'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!hasTable) {
+        db.exec(`
+          CREATE TABLE integration_capabilities (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            integration_name TEXT    NOT NULL,
+            capability_name  TEXT    NOT NULL,
+            role             TEXT    NOT NULL,
+            tagged_at        TEXT    NOT NULL,
+            UNIQUE(integration_name, capability_name, role)
+          );
+          CREATE INDEX idx_integration_capabilities_name
+            ON integration_capabilities(integration_name);
+          CREATE INDEX idx_integration_capabilities_role
+            ON integration_capabilities(integration_name, role);
+        `);
+      }
+    },
+  },
+  {
+    version: 22,
+    description: 'Add integration_health_log table for API connection health monitoring',
+    apply: (db): void => {
+      const hasTable =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='integration_health_log'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!hasTable) {
+        db.exec(`
+          CREATE TABLE integration_health_log (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            integration_name TEXT    NOT NULL,
+            status           TEXT    NOT NULL,
+            message          TEXT,
+            endpoint_url     TEXT,
+            http_status      INTEGER,
+            latency_ms       INTEGER,
+            checked_at       TEXT    NOT NULL
+          );
+          CREATE INDEX idx_integration_health_log_name
+            ON integration_health_log(integration_name);
+          CREATE INDEX idx_integration_health_log_checked
+            ON integration_health_log(integration_name, checked_at);
+        `);
+      }
+    },
+  },
+  {
+    version: 23,
+    description: 'Add business_skills table for learned skill patterns',
+    apply: (db): void => {
+      const hasTable =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='business_skills'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!hasTable) {
+        db.exec(`
+          CREATE TABLE business_skills (
+            id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+            name                  TEXT    NOT NULL,
+            description           TEXT    NOT NULL,
+            steps                 TEXT    NOT NULL DEFAULT '[]',
+            required_integrations TEXT    NOT NULL DEFAULT '[]',
+            required_doc_types    TEXT    NOT NULL DEFAULT '[]',
+            created_at            TEXT    NOT NULL
+          );
+          CREATE INDEX idx_business_skills_name
+            ON business_skills(name);
+          CREATE INDEX idx_business_skills_created
+            ON business_skills(created_at);
+        `);
+      }
+    },
+  },
+  {
+    version: 24,
+    description: 'Add versioning and effectiveness tracking columns to business_skills',
+    apply: (db): void => {
+      const cols = (
+        db.prepare(`PRAGMA table_info('business_skills')`).all() as Array<{ name: string }>
+      ).map((c) => c.name);
+      if (!cols.includes('version')) {
+        db.exec(
+          `ALTER TABLE business_skills ADD COLUMN version          INTEGER NOT NULL DEFAULT 1`,
+        );
+      }
+      if (!cols.includes('usage_count')) {
+        db.exec(
+          `ALTER TABLE business_skills ADD COLUMN usage_count      INTEGER NOT NULL DEFAULT 0`,
+        );
+      }
+      if (!cols.includes('success_rate')) {
+        db.exec(
+          `ALTER TABLE business_skills ADD COLUMN success_rate     REAL    NOT NULL DEFAULT 0`,
+        );
+      }
+      if (!cols.includes('avg_duration_ms')) {
+        db.exec(`ALTER TABLE business_skills ADD COLUMN avg_duration_ms  REAL`);
+      }
+      if (!cols.includes('last_used')) {
+        db.exec(`ALTER TABLE business_skills ADD COLUMN last_used        TEXT`);
+      }
+    },
+  },
+  {
+    version: 25,
+    description: 'Add task_efficiency table for classification escalation tracking (OB-1572)',
+    apply: (db): void => {
+      const hasTable =
+        (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='task_efficiency'`,
+            )
+            .get() as { c: number }
+        ).c > 0;
+      if (!hasTable) {
+        db.exec(`
+          CREATE TABLE task_efficiency (
+            task_class   TEXT PRIMARY KEY,
+            avg_turns    REAL    NOT NULL DEFAULT 0,
+            avg_workers  REAL    NOT NULL DEFAULT 0,
+            sample_count INTEGER NOT NULL DEFAULT 0,
+            updated_at   TEXT    NOT NULL
+          )
+        `);
+      }
+    },
+  },
 ];
 
 /**

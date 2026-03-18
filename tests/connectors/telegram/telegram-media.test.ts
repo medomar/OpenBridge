@@ -43,6 +43,18 @@ vi.mock('../../../src/core/voice-transcriber.js', () => ({
 const MOCK_FALLBACK = '[Voice message — set OPENAI_API_KEY or install whisper for transcription]';
 
 // ---------------------------------------------------------------------------
+// Mock: document processor — avoid real file I/O in connector tests
+// ---------------------------------------------------------------------------
+
+import type { ProcessedDocument } from '../../../src/types/intelligence.js';
+
+const mockProcessDocument = vi.hoisted(() => vi.fn<[string], Promise<ProcessedDocument>>());
+
+vi.mock('../../../src/intelligence/document-processor.js', () => ({
+  processDocument: mockProcessDocument,
+}));
+
+// ---------------------------------------------------------------------------
 // Mock: logger — suppress output
 // ---------------------------------------------------------------------------
 
@@ -201,6 +213,21 @@ describe('Telegram media handling (OB-1166)', () => {
   beforeEach(() => {
     createdBotInstances.length = 0;
     vi.clearAllMocks();
+    // Default: processDocument resolves immediately so it doesn't block message emission
+    mockProcessDocument.mockResolvedValue({
+      id: 'test-doc-id',
+      filename: 'test.pdf',
+      mimeType: 'application/pdf',
+      filePath: '/tmp/test.pdf',
+      docType: 'document',
+      rawText: '',
+      entities: [],
+      relations: [],
+      tables: [],
+      metadata: {},
+      processedAt: new Date().toISOString(),
+      source: 'telegram',
+    } as unknown as ProcessedDocument);
     connector = new TelegramConnector({ token: 'test-token:ABC' });
   });
 
