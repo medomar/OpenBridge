@@ -386,7 +386,7 @@ scripts/                        Task runner utilities
 
 ## Current Version
 
-**v0.1.2** — 213 findings resolved. 1606 tasks shipped across Phases 1–151.
+**v0.1.3** — 230 findings resolved. 1672 tasks shipped across Phases 1–169.
 
 Key additions since v0.0.5:
 
@@ -397,6 +397,8 @@ Key additions since v0.0.5:
 - v0.0.14: Skill pack extensions, creative output (diagrams/charts/art), agent orchestration (planning gate, swarms, test protection, iteration caps)
 - v0.0.15: Deep stability audit — prompt budget, god-class refactoring (8 modules extracted), classification fixes, memory leak fixes, process safety, monorepo awareness
 - v0.1.0: Business platform — document intelligence, DocType engine, integration hub, workflow engine, business document generation, API adapter framework, industry templates, skill pack extensions, Agent SDK permission relay
+- v0.1.1–v0.1.2: Real-world testing fixes, model budgets, WebChat session isolation, trust level system, workspace boundaries
+- v0.1.3: Real-world fixes — escalation loop, DLQ error response, classification escalation, worker boundaries, headless safety, message queueing, remote delivery
 
 ## Conventions
 
