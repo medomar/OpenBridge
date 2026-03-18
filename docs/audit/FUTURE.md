@@ -1,8 +1,8 @@
 # OpenBridge — Future Work
 
 > **Purpose:** Deferred items and backlog for future versions.
-> **Last Updated:** 2026-03-17 | **Current Release:** v0.1.2 (1606 tasks shipped, 213 findings fixed)
-> **Status:** Clean slate. All phases (1–151) shipped and archived in v0–v28.
+> **Last Updated:** 2026-03-18 | **Current Release:** v0.1.3 (1672 tasks shipped, 230 findings fixed)
+> **Status:** Clean slate. All phases (1–169) shipped and archived in v0–v29.
 
 ---
 
