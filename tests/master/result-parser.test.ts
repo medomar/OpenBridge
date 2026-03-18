@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { parseAIResult, parseAIResultWithRetry } from '../../src/master/result-parser.js';
 
 describe('parseAIResult', () => {

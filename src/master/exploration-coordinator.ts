@@ -61,7 +61,7 @@ import type { MemoryManager } from '../memory/index.js';
 import type { Chunk } from '../memory/chunk-store.js';
 import { readdir, access } from 'node:fs/promises';
 import path from 'node:path';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 const logger = createLogger('exploration-coordinator');
 

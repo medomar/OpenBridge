@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 /** Trigger types for workflow execution */
 export const WorkflowTriggerTypeEnum = z.enum([

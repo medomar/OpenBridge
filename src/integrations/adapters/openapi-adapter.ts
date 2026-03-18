@@ -1,6 +1,6 @@
 import SwaggerParser from '@apidevtools/swagger-parser';
 import type { OpenAPI, OpenAPIV3 } from 'openapi-types';
-import { z, type ZodTypeAny } from 'zod';
+import { z, type ZodTypeAny } from 'zod/v3';
 import { createLogger } from '../../core/logger.js';
 import type {
   BusinessIntegration,

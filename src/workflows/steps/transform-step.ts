@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { createLogger } from '../../core/logger.js';
 import type { StepResult } from '../../types/workflow.js';
 

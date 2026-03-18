@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import { execSync } from 'node:child_process';
 
 /** Schema for a connector configuration */

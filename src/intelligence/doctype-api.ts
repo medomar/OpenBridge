@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import type { DocType, DocTypeField } from '../types/doctype.js';
 import { getDocTypeByName, type FullDocType } from './doctype-store.js';
 import { createLogger } from '../core/logger.js';

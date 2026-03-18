@@ -11,7 +11,7 @@
  * - Max concurrent workers (default: 5) prevents resource exhaustion
  */
 
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import type { TaskManifest } from '../types/agent.js';
 import { TaskManifestSchema } from '../types/agent.js';
 import type { AgentResult } from '../core/agent-runner.js';
