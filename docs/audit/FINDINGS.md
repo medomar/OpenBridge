@@ -2,7 +2,7 @@
 
 > **Purpose:** Real issues, gaps, and risks discovered during code audits and real-world testing.
 > **This is NOT a task list.** Tasks live in [TASKS.md](TASKS.md). Findings document _what's wrong_ and _why it matters_.
-> **Open:** 4 | **Fixed:** 12 (213 prior findings archived) | **Last Audit:** 2026-03-17
+> **Open:** 3 | **Fixed:** 14 (213 prior findings archived) | **Last Audit:** 2026-03-17
 > **History:** 213 findings fixed across v0.0.1–v0.1.2. All prior archived in [archive/](archive/).
 
 ---
@@ -41,11 +41,24 @@
 ### OB-F217 — Quick-answer timeout mismatch produces empty responses
 
 - **Severity:** 🟠 High
-- **Status:** Open
+- **Status:** ✅ Fixed
 - **Key Files:** `src/master/classification-engine.ts:28-43`, `src/master/master-manager.ts`
 - **Root Cause / Impact:**
   Quick-answer tasks (maxTurns=5) compute a timeout of 210s (`60s startup + 5×30s/turn`) but `DEFAULT_MESSAGE_TIMEOUT` is 180s. The worker dies before completing, returning only a 28-character error response after 109–168 seconds. Users get empty or error replies for simple questions.
 - **Fix:** Align the timeout math — either reduce `PER_TURN_BUDGET_MS` / `CLI_STARTUP_BUDGET_MS` for quick-answer, or increase `DEFAULT_MESSAGE_TIMEOUT` to exceed the computed worker timeout.
+- **Implementation:** Addressed by OB-F230 classification fixes — deployment messages no longer misclassified as quick-answer.
+
+### OB-F230 — Classification engine cannot escalate quick-answer + moderate-confidence AI overrides keyword match
+
+- **Severity:** 🔴 Critical
+- **Status:** ✅ Fixed
+- **Key Files:** `src/master/classification-engine.ts:479-533`, `src/master/master-manager.ts:3774-3792`
+- **Root Cause / Impact:**
+  Three compounding classification bugs caused deployment requests to be misclassified as quick-answer with 120s timeout:
+  1. **Learning-based escalation blocked for quick-answer (rank 0):** The escalation guard `currentRank > 0` (line 533) prevented quick-answer from ever being escalated by learning data, even when historical data showed 100% success rate for complex-task.
+  2. **AI classifier override with moderate confidence:** When AI returns quick-answer with confidence 0.65 (≥ 0.4 threshold), it overrides the keyword classifier which would have correctly detected "deploy" → tool-use/complex-task. Messages like "Can deployed in other channel" were stuck as quick-answer.
+  3. **No max-turns exhaustion feedback:** When the Master session itself hit max-turns, the raw 29-character output was returned to the user with no guidance on what happened or how to retry.
+- **Fix:** (1) Removed `currentRank > 0` gate so learning data can escalate any class. (2) When AI confidence is 0.4–0.8 and keyword classifier returns a higher class, prefer keyword (prevents under-classification). (3) Added Master max-turns detection with user-friendly guidance message. (4) Improved timeout error message with actionable retry suggestions.
 
 ### OB-F218 — Streaming worker timeout retries waste 20 minutes
 

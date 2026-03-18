@@ -476,7 +476,21 @@ export class ClassificationEngine {
     const keywordResult = this.classifyTaskByKeywords(content, recentUserMessages, lastBotResponse);
 
     // Priority: AI classifier (confidence ≥ 0.4) > keyword match > default fallback
-    if (aiResult && aiResult.confidence >= 0.4) {
+    // Exception: when AI says quick-answer but keyword says higher class, prefer keyword
+    // if confidence is below 0.8 — prevents deployment/build requests from being under-classified (OB-F230)
+    const classRankMap: Record<string, number> = {
+      'quick-answer': 0,
+      'text-generation': 0,
+      'tool-use': 1,
+      'complex-task': 2,
+    };
+    const aiDowngrades =
+      aiResult &&
+      aiResult.confidence >= 0.4 &&
+      aiResult.confidence < 0.8 &&
+      (classRankMap[aiResult.class] ?? 0) < (classRankMap[keywordResult.class] ?? 0);
+
+    if (aiResult && aiResult.confidence >= 0.4 && !aiDowngrades) {
       classificationResult = {
         class: aiResult.class,
         maxTurns: aiResult.maxTurns,
@@ -496,6 +510,19 @@ export class ClassificationEngine {
           'Classification conflict: AI classifier (confidence ≥ 0.4) preferred over keyword match',
         );
       }
+    } else if (aiDowngrades) {
+      // AI classifier under-classifies with moderate confidence — keyword wins (OB-F230)
+      classificationResult = keywordResult;
+      logger.info(
+        {
+          aiClass: aiResult!.class,
+          aiConfidence: aiResult!.confidence,
+          keywordClass: keywordResult.class,
+          keywordReason: keywordResult.reason,
+          winner: 'keyword-upgrade',
+        },
+        'Classification conflict: keyword match preferred — AI would downgrade with moderate confidence',
+      );
     } else {
       // Preserve keyword-specific flags (batchMode, doctypeCreation, etc.)
       classificationResult = keywordResult;
@@ -529,8 +556,7 @@ export class ClassificationEngine {
           if (
             validClasses.has(learned.model) &&
             learnedRank > currentRank &&
-            learned.success_rate > 0.5 &&
-            currentRank > 0
+            learned.success_rate > 0.5
           ) {
             const escalatedClass = learned.model as ClassificationResult['class'];
             // OB-1573: Suppress escalation if efficiency data shows the escalated class
