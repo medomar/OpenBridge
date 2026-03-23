@@ -19,7 +19,7 @@ export type { ExplorationManagerDeps } from './exploration-manager.js';
 import { WorkerOrchestrator } from './worker-orchestrator.js';
 // Re-export for backward compatibility (OB-1281)
 export type { WorkerOrchestratorDeps } from './worker-orchestrator.js';
-import { PromptContextBuilder } from './prompt-context-builder.js';
+import { PromptContextBuilder, SECTION_BUDGET_RAG } from './prompt-context-builder.js';
 // Re-export for backward compatibility (OB-1282)
 export type { PromptContextBuilderDeps, MasterContextSections } from './prompt-context-builder.js';
 // predictToolRequirements, detectToolAccessFailure, ToolAccessFailure, ToolPrediction
@@ -27,6 +27,7 @@ export type { PromptContextBuilderDeps, MasterContextSections } from './prompt-c
 // ExplorationCoordinator, generateReExplorationPrompt, generateIncrementalExplorationPrompt
 // moved to exploration-manager.ts (OB-1280)
 import { generateMasterSystemPrompt } from './master-system-prompt.js';
+import type { ConnectedIntegrationEntry } from './master-system-prompt.js';
 // formatLearnedPatternsSection, formatWorkerNextStepsSection,
 // formatPreFetchedKnowledgeSection, formatTargetedReaderSection, WorkerNextStepsEntry
 // moved to prompt-context-builder.ts (OB-1282)
@@ -42,7 +43,7 @@ import {
   resolveProfile,
 } from '../core/agent-runner.js';
 import type { SpawnOptions, AgentResult } from '../core/agent-runner.js';
-import { manifestToSpawnOptions } from '../core/agent-runner.js';
+import { manifestToSpawnOptions, AgentExhaustedError } from '../core/agent-runner.js';
 import { getRecommendedModel, avoidHighFailureModel } from '../core/model-selector.js';
 // PromptAssembler and PRIORITY_* constants moved to prompt-context-builder.ts (OB-1282)
 import type { CLIAdapter } from '../core/cli-adapter.js';
@@ -72,8 +73,10 @@ import { formatWorkerBatch } from './worker-result-formatter.js';
 import { WorkerRegistry, WorkersRegistrySchema } from './worker-registry.js';
 import type { WorkerRecord } from './worker-registry.js';
 import { evolvePrompts } from './prompt-evolver.js';
+import { MAX_PROMPT_VERSION_LENGTH } from '../memory/prompt-store.js';
 import { applyToolPromptPrefix, seedPromptLibrary, SEED_PROMPTS } from './seed-prompts.js';
 import type { KnowledgeRetriever } from '../core/knowledge-retriever.js';
+import type { IntegrationHub } from '../integrations/hub.js';
 import { DeepModeManager } from './deep-mode.js';
 import type {
   MasterState,
@@ -93,7 +96,7 @@ import {
   AgentsRegistrySchema,
 } from '../types/master.js';
 import type { DiscoveredTool } from '../types/discovery.js';
-import type { MCPServer, DeepConfig } from '../types/config.js';
+import type { MCPServer, DeepConfig, WorkspaceTrustLevel } from '../types/config.js';
 import type { InboundMessage, ProgressEvent } from '../types/message.js';
 import { createModelRegistry } from '../core/model-registry.js';
 import type { ModelRegistry } from '../core/model-registry.js';
@@ -115,7 +118,7 @@ import { PlanningGate, shouldBypassPlanning, performReasoningCheckpoint } from '
 const logger = createLogger('master-manager');
 
 const DEFAULT_TIMEOUT = 1_800_000; // 30 minutes for exploration
-const DEFAULT_MESSAGE_TIMEOUT = 180_000; // 3 minutes for message processing
+const DEFAULT_MESSAGE_TIMEOUT = 300_000; // 5 minutes for message processing
 const DEFAULT_WORKER_TIMEOUT = 300_000; // 5 minutes for worker tasks
 
 // turnsToTimeout imported from classification-engine.ts (OB-1279)
@@ -310,12 +313,16 @@ export function detectToolAccessFailure(result: {
 }
 
 /**
- * Tools available to the Master AI session.
- * Resolved from the built-in 'master' profile: Read, Glob, Grep, Write, Edit.
- * Master can read, write, and edit files (for .openbridge/ management)
- * but NOT execute arbitrary commands — it delegates to workers for that.
+ * Returns tools available to the Master AI session based on trust level.
+ * - trusted:  full-access tools including Bash(*) — Master can execute commands directly.
+ * - sandbox:  read-only tools (Read, Glob, Grep) — Master cannot modify files.
+ * - standard: master profile (Read, Glob, Grep, Write, Edit) — delegates execution to workers.
  */
-const MASTER_TOOLS = BUILT_IN_PROFILES.master.tools;
+export function getMasterTools(trustLevel: WorkspaceTrustLevel): string[] {
+  if (trustLevel === 'trusted') return [...BUILT_IN_PROFILES['full-access'].tools];
+  if (trustLevel === 'sandbox') return ['Read', 'Glob', 'Grep'];
+  return [...BUILT_IN_PROFILES.master.tools];
+}
 
 /**
  * Default max turns for the Master session per interaction.
@@ -358,7 +365,7 @@ function sessionRecordToMasterSession(record: SessionRecord): MasterSession {
     messageCount: record.message_count ?? 0,
     allowedTools: record.allowed_tools
       ? (JSON.parse(record.allowed_tools) as string[])
-      : [...MASTER_TOOLS],
+      : getMasterTools('standard'),
     maxTurns: MASTER_MAX_TURNS,
   };
 }
@@ -468,6 +475,8 @@ export interface MasterManagerOptions {
    * Set to 0 to disable the cap.
    */
   workerMaxFixIterations?: number;
+  /** Workspace trust level — controls Master AI tool access (OB-1583) */
+  trustLevel?: WorkspaceTrustLevel;
 }
 
 /**
@@ -531,6 +540,7 @@ export class MasterManager {
   private tunnelUrl: string | null = null;
 
   private state: MasterState = 'idle';
+  private processingPendingMessages: InboundMessage[] = [];
 
   /** Exploration summary — delegated to ExplorationManager (OB-1280). */
   private get explorationSummary(): ExplorationSummary | null {
@@ -569,6 +579,8 @@ export class MasterManager {
   private isSelfImproving = false;
   /** Consecutive idle cycles without a user message — drives exponential backoff */
   private consecutiveIdleCycles = 0;
+  /** Consecutive no-op self-improvement cycles — suppresses cycles after 2 no-ops (OB-F210) */
+  private consecutiveNoOpCycles = 0;
   /** Number of successfully completed tasks — triggers prompt evolution every 50 (OB-734) */
   private completedTaskCount = 0;
   /** Cached workspace map summary — delegated to ExplorationManager (OB-1280). */
@@ -605,6 +617,8 @@ export class MasterManager {
   private readonly pendingDeepModeResumeOffers: string[] = [];
   /** KnowledgeRetriever for RAG-based context injection (OB-1344). Null until set via setKnowledgeRetriever(). */
   private knowledgeRetriever: KnowledgeRetriever | null = null;
+  /** IntegrationHub for business integrations — null until set via setIntegrationHub(). */
+  private integrationHub: IntegrationHub | null = null;
   /** Deep Mode manager — tracks multi-phase session state (OB-1403). */
   private readonly deepMode: DeepModeManager;
   /** Deep Mode configuration — controls default profile and per-phase model overrides (OB-1403). */
@@ -621,6 +635,8 @@ export class MasterManager {
   private readonly planningGate = new PlanningGate();
   /** Max lint/test fix iterations for workers before escalating to Master (OB-1791). */
   private readonly workerMaxFixIterations: number;
+  /** Workspace trust level — controls Master/worker tool access (OB-1583) */
+  private readonly trustLevel: WorkspaceTrustLevel;
 
   constructor(options: MasterManagerOptions) {
     this.workspacePath = options.workspacePath;
@@ -643,6 +659,7 @@ export class MasterManager {
     this.workspaceExclude = options.workspaceExclude ?? [];
     this.workspaceInclude = options.workspaceInclude ?? [];
     this.workerMaxFixIterations = options.workerMaxFixIterations ?? DEFAULT_MAX_FIX_ITERATIONS;
+    this.trustLevel = options.trustLevel ?? 'standard';
 
     // Instantiate DeepModeManager — multi-phase session state machine (OB-1403)
     this.deepMode = new DeepModeManager({ workspacePath: this.workspacePath });
@@ -723,6 +740,7 @@ export class MasterManager {
       modelRegistry: this.modelRegistry,
       workerRetryDelayMs: this.workerRetryDelayMs,
       workerMaxFixIterations: this.workerMaxFixIterations,
+      trustLevel: this.trustLevel,
       getMemory: () => this.memory,
       getRouter: () => this.router,
       getMasterSession: () => this.masterSession,
@@ -1104,8 +1122,9 @@ export class MasterManager {
   private async buildConversationContext(
     userMessage: string,
     sessionId?: string,
+    sender?: string,
   ): Promise<string | null> {
-    return this.promptContextBuilder.buildConversationContext(userMessage, sessionId);
+    return this.promptContextBuilder.buildConversationContext(userMessage, sessionId, sender);
   }
 
   /** Build learned patterns context. Delegated to PromptContextBuilder (OB-1282). */
@@ -1414,12 +1433,32 @@ export class MasterManager {
       try {
         const isStale = await this.dotFolder.isMemoryStale();
         if (isStale) {
-          const recentMessages = await this.memory.getRecentMessages(20);
-          await this.dotFolder.writeMemoryFallback(recentMessages);
-          logger.info(
-            { messageCount: recentMessages.length },
-            'Regenerated stale memory.md from SQLite on startup (OB-1617)',
-          );
+          // OB-1651: Try SQLite backup first before falling back to conversation regeneration.
+          const backup = await this.memory.getSystemConfig('memory_md_backup');
+          if (backup) {
+            try {
+              await this.dotFolder.writeMemoryFile(backup);
+              logger.info('Restored memory.md from SQLite backup');
+            } catch (e) {
+              logger.warn(
+                { err: e },
+                'SQLite backup restore failed — falling back to regeneration',
+              );
+              const recentMessages = await this.memory.getRecentMessages(20);
+              await this.dotFolder.writeMemoryFallback(recentMessages);
+              logger.info(
+                { messageCount: recentMessages.length },
+                'Regenerated stale memory.md from SQLite on startup (OB-1617)',
+              );
+            }
+          } else {
+            const recentMessages = await this.memory.getRecentMessages(20);
+            await this.dotFolder.writeMemoryFallback(recentMessages);
+            logger.info(
+              { messageCount: recentMessages.length },
+              'Regenerated stale memory.md from SQLite on startup (OB-1617)',
+            );
+          }
         }
       } catch (err) {
         logger.warn({ err }, 'Failed to check/regenerate stale memory.md on startup');
@@ -1799,7 +1838,7 @@ export class MasterManager {
       createdAt: now,
       lastUsedAt: now,
       messageCount: 0,
-      allowedTools: [...MASTER_TOOLS],
+      allowedTools: getMasterTools(this.trustLevel),
       maxTurns: MASTER_MAX_TURNS,
     };
 
@@ -1876,11 +1915,26 @@ export class MasterManager {
       workspaceInclude: this.workspaceInclude.length > 0 ? this.workspaceInclude : undefined,
       availableSkills: BUILT_IN_SKILLS,
       availableSkillPacks: this.activeSkillPacks,
+      connectedIntegrations: this.buildConnectedIntegrations(),
+      trustLevel: this.trustLevel,
     });
 
     try {
       if (this.memory) {
-        await this.memory.createPromptVersion('master-system', promptContent);
+        if (promptContent.length > MAX_PROMPT_VERSION_LENGTH) {
+          logger.warn(
+            { size: promptContent.length, max: MAX_PROMPT_VERSION_LENGTH },
+            'System prompt exceeds DB size cap — falling back to file storage',
+          );
+          await this.dotFolder.writeSystemPrompt(promptContent);
+        } else {
+          try {
+            await this.memory.createPromptVersion('master-system', promptContent);
+          } catch (dbErr) {
+            logger.warn({ error: dbErr }, 'DB prompt save failed — falling back to file storage');
+            await this.dotFolder.writeSystemPrompt(promptContent);
+          }
+        }
       } else {
         await this.dotFolder.writeSystemPrompt(promptContent);
       }
@@ -2068,7 +2122,7 @@ export class MasterManager {
       createdAt: now,
       lastUsedAt: now,
       messageCount: 0,
-      allowedTools: [...MASTER_TOOLS],
+      allowedTools: getMasterTools(this.trustLevel),
       maxTurns: MASTER_MAX_TURNS,
     };
     this.sessionInitialized = false;
@@ -2507,6 +2561,33 @@ export class MasterManager {
   }
 
   /**
+   * Set the IntegrationHub — exposes connected integrations to the Master AI.
+   * Called by Bridge.start() after the hub is created.
+   */
+  public setIntegrationHub(hub: IntegrationHub): void {
+    this.integrationHub = hub;
+  }
+
+  /**
+   * Build the list of connected integrations for the Master system prompt.
+   * Only returns integrations that have been successfully initialized (connected=true).
+   */
+  private buildConnectedIntegrations(): ConnectedIntegrationEntry[] | undefined {
+    if (!this.integrationHub) return undefined;
+    const all = this.integrationHub.list();
+    const connected = all.filter((info) => info.connected);
+    if (connected.length === 0) return undefined;
+    return connected.map((info) => {
+      const integration = this.integrationHub!.get(info.name);
+      return {
+        name: info.name,
+        type: info.type,
+        capabilities: integration.describeCapabilities(),
+      };
+    });
+  }
+
+  /**
    * Set the names of active connectors so they can be included in the Master system prompt.
    * Called by the startup flow after Bridge.start() completes and connectors are initialized.
    */
@@ -2920,6 +3001,23 @@ export class MasterManager {
   }
 
   /**
+   * Build a per-message context header with channel and role information (OB-1625).
+   * Injected at the start of every prompt so the Master can make channel-aware decisions.
+   */
+  private async getMessageContextHeader(message: InboundMessage): Promise<string> {
+    let role = 'owner';
+    if (this.memory) {
+      try {
+        const entry = await this.memory.getAccess(message.sender, message.source);
+        if (entry) role = entry.role;
+      } catch {
+        /* default to owner */
+      }
+    }
+    return `[Context: channel=${message.source}, sender=${message.sender}, role=${role}]\n\n`;
+  }
+
+  /**
    * Build a planning prompt for complex tasks.
    * Instructs the Master to decompose the request into SPAWN markers
    * without executing the tasks itself — forcing delegation within 3-5 turns.
@@ -3023,11 +3121,97 @@ export class MasterManager {
   private resetIdleTimer(): void {
     this.lastMessageTimestamp = Date.now();
     this.consecutiveIdleCycles = 0;
+    this.consecutiveNoOpCycles = 0;
   }
 
   /** Drain pending messages. Delegated to ExplorationManager (OB-1280). */
   private async drainPendingMessages(): Promise<void> {
     return this.explorationManager.drainPendingMessages();
+  }
+
+  /**
+   * Merge rapid-fire image+text messages from the same sender within a 10-second window.
+   *
+   * When a user sends one or more images followed immediately by a text message,
+   * the image context (OCR text from processedDocument) is prepended to the text
+   * message's content so the Master sees both together. The image-only messages
+   * are consumed and removed from the queue. (OB-1658)
+   */
+  private mergeRapidFireImageMessages(messages: InboundMessage[]): InboundMessage[] {
+    const RAPID_FIRE_WINDOW_MS = 10_000;
+
+    // Track pending image-only messages per sender
+    const pendingImages = new Map<string, InboundMessage[]>();
+    const result: InboundMessage[] = [];
+
+    for (const msg of messages) {
+      const hasImageAttachments = msg.attachments?.some((a) => a.type === 'image') ?? false;
+      const hasTextContent = msg.content.trim().length > 0;
+
+      if (hasImageAttachments && !hasTextContent) {
+        // Pure image message — hold it for potential merge with a following text message
+        const existing = pendingImages.get(msg.sender) ?? [];
+        existing.push(msg);
+        pendingImages.set(msg.sender, existing);
+      } else if (hasTextContent) {
+        // Text message — check for pending images from the same sender within the window
+        const imgMsgs = pendingImages.get(msg.sender) ?? [];
+        const recentImages = imgMsgs.filter(
+          (imgMsg) => msg.timestamp.getTime() - imgMsg.timestamp.getTime() <= RAPID_FIRE_WINDOW_MS,
+        );
+
+        if (recentImages.length > 0) {
+          // Build the OCR context prefix from processedDocument.rawText
+          const ocrParts: string[] = [];
+          for (const imgMsg of recentImages) {
+            const rawText = imgMsg.processedDocument?.rawText?.trim();
+            if (rawText) {
+              ocrParts.push(rawText);
+            }
+          }
+          const ocrText = ocrParts.length > 0 ? `\n${ocrParts.join('\n')}` : '';
+          const mergedContent = `[User also sent ${recentImages.length} image(s) — see .openbridge/media/ for processed content]${ocrText}\n${msg.content}`;
+          result.push({ ...msg, content: mergedContent });
+
+          logger.info(
+            { sender: msg.sender, imageCount: recentImages.length },
+            'Merged rapid-fire image+text messages during drain (OB-1658)',
+          );
+
+          // Keep stale images (outside the window) — they were not consumed
+          const staleImages = imgMsgs.filter(
+            (imgMsg) => msg.timestamp.getTime() - imgMsg.timestamp.getTime() > RAPID_FIRE_WINDOW_MS,
+          );
+          if (staleImages.length > 0) {
+            pendingImages.set(msg.sender, staleImages);
+          } else {
+            pendingImages.delete(msg.sender);
+          }
+        } else {
+          // No recent images to merge — flush any stale pending images first
+          if (imgMsgs.length > 0) {
+            result.push(...imgMsgs);
+            pendingImages.delete(msg.sender);
+          }
+          result.push(msg);
+        }
+      } else {
+        // Mixed or other message type — flush pending images for sender then pass through
+        const imgMsgs = pendingImages.get(msg.sender) ?? [];
+        if (imgMsgs.length > 0) {
+          result.push(...imgMsgs);
+          pendingImages.delete(msg.sender);
+        }
+        result.push(msg);
+      }
+    }
+
+    // Flush any remaining pending images that were never followed by a text message
+    for (const [, imgMsgs] of pendingImages) {
+      result.push(...imgMsgs);
+    }
+
+    return result;
   }
 
   /**
@@ -3063,6 +3247,18 @@ export class MasterManager {
       // Queue this message so it is processed once exploration completes.
       this.pendingMessages.push(message);
       return 'The AI encountered an exploration error and is retrying. Your message will be processed once recovery completes.';
+    }
+
+    if (this.state === 'processing') {
+      if (this.processingPendingMessages.length >= 5) {
+        return 'Too many queued messages. Please wait for the current request to complete.';
+      }
+      this.processingPendingMessages.push(message);
+      logger.info(
+        { sender: message.sender, queueSize: this.processingPendingMessages.length },
+        'Message queued during processing',
+      );
+      return "I'm working on your previous request. Your message has been queued and will be processed next.";
     }
 
     if (this.state !== 'ready') {
@@ -3167,12 +3363,17 @@ export class MasterManager {
 
       // Retrieve relevant past conversation history to enrich the Master's context (OB-731)
       // and fetch learned patterns for system prompt enrichment (OB-735)
-      const [conversationContext, learnedPatternsContext, workerNextStepsContext] =
-        await Promise.all([
-          this.buildConversationContext(message.content, sessionId),
-          this.buildLearnedPatternsContext(),
-          this.buildWorkerNextStepsContext(),
-        ]);
+      const [
+        conversationContext,
+        learnedPatternsContext,
+        workerNextStepsContext,
+        templateSelectionContext,
+      ] = await Promise.all([
+        this.buildConversationContext(message.content, sessionId, message.sender),
+        this.buildLearnedPatternsContext(),
+        this.buildWorkerNextStepsContext(),
+        this.promptContextBuilder.buildTemplateSelectionContext(),
+      ]);
 
       // (1) Emit classifying event — AI is analyzing the message
       await progress?.({ type: 'classifying' });
@@ -3193,6 +3394,17 @@ export class MasterManager {
         );
         taskClass = 'tool-use';
         taskMaxTurns = MESSAGE_MAX_TURNS_TOOL_USE;
+      }
+
+      // DocType creation intent — OB-1384
+      // When the classifier detects doctype-creation phrases, override the prompt so the Master
+      // spawns a worker to design and register a DocType with appropriate fields, states, and hooks.
+      if (classification.doctypeCreation && classification.doctypeEntity) {
+        const entity = classification.doctypeEntity;
+        logger.info({ entity }, 'DocType creation intent detected — injecting design prompt');
+        // Escalate to complex-task if not already
+        taskClass = 'complex-task';
+        taskMaxTurns = MESSAGE_MAX_TURNS_PLANNING;
       }
 
       // Deep Mode activation — OB-1403
@@ -3270,9 +3482,28 @@ export class MasterManager {
           },
           'RAG query completed',
         );
-        if (knowledgeResult.confidence < 0.3) {
+        // RAG retry with classifier description (OB-1569): when the raw user message
+        // (e.g. Arabizi/Darija) returns zero chunks, retry with the AI classifier's English
+        // description, which has already translated the user's intent.
+        let effectiveKnowledgeResult = knowledgeResult;
+        if (knowledgeResult.chunks.length === 0 && classification.ragQuery) {
+          const retryResult = await this.knowledgeRetriever.query(classification.ragQuery);
+          logger.info(
+            {
+              originalQueryLen: message.content.length,
+              retryQueryLen: classification.ragQuery.length,
+              retryChunkCount: retryResult.chunks.length,
+              retryConfidence: retryResult.confidence,
+            },
+            'RAG retry with classifier description',
+          );
+          if (retryResult.chunks.length > 0) {
+            effectiveKnowledgeResult = retryResult;
+          }
+        }
+        if (effectiveKnowledgeResult.confidence < 0.3) {
           logger.debug(
-            { confidence: knowledgeResult.confidence },
+            { confidence: effectiveKnowledgeResult.confidence },
             'Low confidence, worker may be needed',
           );
           // Targeted reader: suggest files from workspace map and spawn a focused
@@ -3296,9 +3527,25 @@ export class MasterManager {
               logger.debug('No target files identified, falling back to Master handling');
             }
           }
+          // Workspace-map summary fallback (OB-1570): when RAG returns low confidence
+          // and targeted reader also fails, inject a workspace overview so workers
+          // get basic project context even when FTS5 fails completely.
+          if (!knowledgeContext && !targetedReaderContext && workspaceMap) {
+            knowledgeContext = `## Workspace Overview (fallback)\n\n${JSON.stringify(workspaceMap.projectType ?? 'unknown')} project with ${Object.keys(workspaceMap.structure ?? {}).length} directories.\nKey files: ${(
+              workspaceMap.keyFiles ?? []
+            )
+              .slice(0, 10)
+              .map((f) => f.path)
+              .join(', ')}`;
+            if (knowledgeContext.length > SECTION_BUDGET_RAG) {
+              knowledgeContext = knowledgeContext.slice(0, SECTION_BUDGET_RAG);
+            }
+            logger.info('Workspace-map summary fallback injected (OB-1570)');
+          }
         }
-        if (knowledgeResult.confidence >= 0.3) {
-          knowledgeContext = this.knowledgeRetriever.formatKnowledgeContext(knowledgeResult);
+        if (effectiveKnowledgeResult.confidence >= 0.3) {
+          knowledgeContext =
+            this.knowledgeRetriever.formatKnowledgeContext(effectiveKnowledgeResult);
         }
       }
 
@@ -3314,6 +3561,18 @@ export class MasterManager {
           ? `User selected option ${digit}: '${classification.selectedOptionText}'`
           : `User selected option ${digit}`;
       }
+      // DocType creation — inject a design prompt so Master spawns a worker to build the DocType (OB-1384)
+      if (classification.doctypeCreation && classification.doctypeEntity) {
+        const entity = classification.doctypeEntity;
+        promptToSend =
+          `The user wants to track "${entity}". ` +
+          `Design a "${entity}" DocType with appropriate fields (name, status, dates, amounts, references), ` +
+          `states (e.g. draft → active → completed), computed fields where useful, and lifecycle hooks. ` +
+          `Use the DocType system in src/intelligence/ to register it. ` +
+          `Original request: ${message.content}`;
+      }
+      // Prepend channel + role context header so Master can make channel-aware decisions (OB-1625)
+      promptToSend = (await this.getMessageContextHeader(message)) + promptToSend;
       // complex-task always uses planning turns; otherwise use AI-suggested budget
       const maxTurnsToUse =
         taskClass === 'complex-task' ? MESSAGE_MAX_TURNS_PLANNING : taskMaxTurns;
@@ -3322,6 +3581,37 @@ export class MasterManager {
         taskClass === 'complex-task'
           ? turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING)
           : classification.timeout;
+      // ── Timeout chain documentation (OB-F217) ────────────────────────────────
+      // (1) classification.timeout is produced by turnsToTimeout() in classification-engine.ts:
+      //       turnsToTimeout(n) = CLI_STARTUP_BUDGET_MS + n × PER_TURN_BUDGET_MS
+      //                         = 30_000             + n × 30_000
+      //     Examples per task class (Phase 155 values):
+      //       quick-answer  (n=3)  → 30s + 90s  = 120s
+      //       tool-use      (n=15) → 30s + 450s = 480s
+      //       complex-task  (n=25) → 30s + 750s = 780s
+      //
+      // (2) timeoutToUse overrides to the planning-turns budget for complex-task (see above),
+      //     so timeoutToUse == turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING) = 780s for complex.
+      //
+      // (3) safeTimeout = Math.min(timeoutToUse, DEFAULT_MESSAGE_TIMEOUT)
+      //     clamps to 300s max (DEFAULT_MESSAGE_TIMEOUT = 300_000 at line 121).
+      //     Effect: quick-answer stays at 120s (< 300s ceiling),
+      //             tool-use is clamped to 300s (was 170s before OB-1662),
+      //             complex-task is clamped to 300s (was 170s before OB-1662).
+      //
+      // (4) safeTimeout is forwarded to buildMasterSpawnOptions() → agentRunner.spawn().
+      //     The Master session process runs for at most safeTimeout ms total —
+      //     this budget INCLUDES context loading, worker spawning, and worker execution.
+      //     The 10s headroom reduction was removed (OB-1662) because the Master session
+      //     IS the top-level process — there is no outer timeout to race against.
+      // ─────────────────────────────────────────────────────────────────────────
+      const safeTimeout = Math.min(timeoutToUse, DEFAULT_MESSAGE_TIMEOUT);
+      if (safeTimeout < timeoutToUse) {
+        logger.warn(
+          { originalTimeout: timeoutToUse, safeTimeout },
+          'Timeout clamped to message timeout boundary',
+        );
+      }
 
       if (taskClass === 'complex-task') {
         logger.info('Complex task — using planning prompt for auto-delegation');
@@ -3444,10 +3734,11 @@ export class MasterManager {
         knowledgeContext,
         targetedReaderContext,
         analysisContext,
+        templateSelectionContext,
       };
       const spawnOpts = this.buildMasterSpawnOptions(
         promptToSend,
-        timeoutToUse,
+        safeTimeout,
         maxTurnsToUse,
         masterContext,
       );
@@ -3467,7 +3758,7 @@ export class MasterManager {
         // Retry with the same prompt and context sections (OB-1246: budget-aware assembly)
         const retryOpts = this.buildMasterSpawnOptions(
           promptToSend,
-          timeoutToUse,
+          safeTimeout,
           maxTurnsToUse,
           masterContext,
         );
@@ -3481,6 +3772,27 @@ export class MasterManager {
       }
 
       let response = result.stdout.trim() || 'No response from AI';
+
+      // Guard: Master session itself hit max-turns — provide actionable feedback (OB-F230)
+      if (result.turnsExhausted) {
+        const partial = response.length > 20 ? response : '';
+        const turnsUsedStr = result.turnsUsed ? ` (used ${result.turnsUsed} turns)` : '';
+        logger.warn(
+          { taskId, maxTurns: maxTurnsToUse, turnsUsed: result.turnsUsed },
+          'Master session hit max-turns limit — returning partial result with guidance',
+        );
+        if (partial && !hasSpawnMarkers(partial)) {
+          // Master produced some useful output before exhaustion — append guidance
+          response =
+            partial +
+            `\n\n⚠️ I ran out of processing capacity${turnsUsedStr}. ` +
+            `If this isn't complete, please send a follow-up message to continue.`;
+        } else if (!hasSpawnMarkers(response)) {
+          response =
+            `Your request needed more processing time than available${turnsUsedStr}. ` +
+            `Please try breaking it into smaller steps — for example, ask me to do the deployment separately from the code changes.`;
+        }
+      }
 
       // Check for SPAWN markers first (richer task decomposition protocol)
       if (hasSpawnMarkers(response)) {
@@ -3566,6 +3878,7 @@ export class MasterManager {
               }
             },
             message.attachments,
+            taskClass,
           );
 
           // (5) Emit synthesizing event — Master is combining worker results
@@ -3842,6 +4155,23 @@ export class MasterManager {
         }
       }
 
+      // Drain any messages that were queued while this message was being processed (OB-F229)
+      if (this.processingPendingMessages.length > 0 && this.router !== null) {
+        const queued = [...this.processingPendingMessages];
+        this.processingPendingMessages = [];
+        logger.info({ count: queued.length }, 'Draining queued messages after processing');
+        // Merge rapid-fire image+text messages from the same sender before routing (OB-1658)
+        const mergedQueue = this.mergeRapidFireImageMessages(queued);
+        for (const queuedMsg of mergedQueue) {
+          try {
+            this.state = 'ready';
+            await this.router.route(queuedMsg);
+          } catch (err) {
+            logger.error({ err, messageId: queuedMsg.id }, 'Failed to process queued message');
+          }
+        }
+      }
+
       return response;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -3874,6 +4204,22 @@ export class MasterManager {
 
       // Ensure complete event is always emitted so status bars are cleaned up
       await progress?.({ type: 'complete' });
+
+      // Partial response on timeout — ensures user always gets feedback (OB-1663).
+      // Exit code 143 = SIGTERM (timeout). Instead of propagating to the DLQ silently,
+      // return a user-friendly message so the user knows what happened.
+      if (error instanceof AgentExhaustedError && error.lastExitCode === 143) {
+        const seconds = Math.round(error.durationMs / 1000);
+        const timeoutMsg =
+          `Your request timed out after ${seconds}s. ` +
+          `This usually happens with multi-step tasks. Try sending each step separately — ` +
+          `for example: "deploy the POS app" as one message, then "send me the link" as a follow-up.`;
+        logger.warn(
+          { taskId, sender: message.sender, durationMs: error.durationMs, exitCode: 143 },
+          'Master session timed out — returning user feedback instead of propagating to DLQ (OB-1663)',
+        );
+        return timeoutMsg;
+      }
 
       throw error;
     }
@@ -3957,7 +4303,7 @@ export class MasterManager {
         streamLearnedPatternsContext,
         streamWorkerNextStepsContext,
       ] = await Promise.all([
-        this.buildConversationContext(message.content, streamSessionId),
+        this.buildConversationContext(message.content, streamSessionId, message.sender),
         this.buildLearnedPatternsContext(),
         this.buildWorkerNextStepsContext(),
       ]);
@@ -3968,10 +4314,12 @@ export class MasterManager {
       // Classify message to determine appropriate turn budget and prompt
       const streamClassification = await this.classifyTask(message.content, streamSessionId);
       const streamTaskClass = streamClassification.class;
-      const streamPromptToSend =
+      let streamPromptToSend =
         streamTaskClass === 'complex-task'
           ? this.buildPlanningPrompt(message.content)
           : message.content;
+      // Prepend channel + role context header so Master can make channel-aware decisions (OB-1627)
+      streamPromptToSend = (await this.getMessageContextHeader(message)) + streamPromptToSend;
       // complex-task always uses planning turns; otherwise use AI-suggested budget
       const streamMaxTurns =
         streamTaskClass === 'complex-task'
@@ -4144,6 +4492,7 @@ export class MasterManager {
               spawnResult.markers,
               workerCallback,
               message.attachments,
+              streamTaskClass,
             );
             let progressIter = await progressGen.next();
             while (!progressIter.done) {
@@ -4158,6 +4507,7 @@ export class MasterManager {
               spawnResult.markers,
               workerCallback,
               message.attachments,
+              streamTaskClass,
             );
           }
 
@@ -4447,6 +4797,14 @@ export class MasterManager {
     if (idleTime >= currentThreshold) {
       this.consecutiveIdleCycles++;
 
+      // Suppress self-improvement after 2 consecutive no-ops (OB-F210)
+      if (this.consecutiveNoOpCycles >= 2) {
+        logger.debug(
+          'Self-improvement paused: 2 consecutive no-op cycles — waiting for next user message',
+        );
+        return;
+      }
+
       logger.info(
         {
           idleTimeMs: idleTime,
@@ -4460,9 +4818,15 @@ export class MasterManager {
       );
 
       try {
-        await this.runSelfImprovementCycle();
+        const workDone = await this.runSelfImprovementCycle();
+        if (workDone) {
+          this.consecutiveNoOpCycles = 0;
+        } else {
+          this.consecutiveNoOpCycles++;
+        }
       } catch (error) {
         logger.error({ err: error }, 'Self-improvement cycle failed');
+        this.consecutiveNoOpCycles++;
       }
 
       // Reset last message timestamp to prevent immediate re-trigger
@@ -4477,16 +4841,18 @@ export class MasterManager {
    * 2. Create new custom profiles for recurring task patterns
    * 3. Update workspace-map.json if project has changed
    */
-  private async runSelfImprovementCycle(): Promise<void> {
+  private async runSelfImprovementCycle(): Promise<boolean> {
     if (this.isSelfImproving) {
       logger.warn('Self-improvement cycle already running');
-      return;
+      return false;
     }
 
     this.isSelfImproving = true;
     const startedAt = new Date().toISOString();
 
     logger.info('Starting self-improvement cycle');
+
+    let workDone = false;
 
     try {
       if (this.memory) {
@@ -4506,7 +4872,7 @@ export class MasterManager {
       }
 
       // Task 0: Detect degraded prompts (rewrites that made things worse) and rollback
-      await this.rollbackDegradedPrompts();
+      const rollbackCount = await this.rollbackDegradedPrompts();
 
       // Task 1: Identify and rewrite low-performing prompts via dot-folder manifest
       const lowPerformingPrompts = await this.dotFolder.getLowPerformingPrompts(0.5);
@@ -4522,10 +4888,14 @@ export class MasterManager {
       }
 
       // Task 2: Analyze learnings for recurring task patterns and create custom profiles
-      await this.createProfilesFromLearnings();
+      const profileCreated = await this.createProfilesFromLearnings();
 
       // Task 3: Check if workspace has changed and update map if needed
-      await this.updateWorkspaceMapIfChanged();
+      const workspaceChanged = await this.updateWorkspaceMapIfChanged();
+
+      // Determine if any productive work was done (OB-F210)
+      workDone =
+        rollbackCount > 0 || lowPerformingPrompts.length > 0 || profileCreated || workspaceChanged;
 
       if (this.memory) {
         await this.memory.logExploration({
@@ -4533,7 +4903,11 @@ export class MasterManager {
           level: 'info',
           message: 'Self-improvement cycle completed',
           data: {
+            rollbackCount,
             lowPerformingPrompts: lowPerformingPrompts.length,
+            profileCreated,
+            workspaceChanged,
+            workDone,
             durationMs: new Date().getTime() - new Date(startedAt).getTime(),
           },
         });
@@ -4543,13 +4917,17 @@ export class MasterManager {
           level: 'info',
           message: 'Self-improvement cycle completed',
           data: {
+            rollbackCount,
             lowPerformingPrompts: lowPerformingPrompts.length,
+            profileCreated,
+            workspaceChanged,
+            workDone,
             durationMs: new Date().getTime() - new Date(startedAt).getTime(),
           },
         });
       }
 
-      logger.info('Self-improvement cycle completed successfully');
+      logger.info({ workDone }, 'Self-improvement cycle completed');
     } catch (error) {
       logger.error({ err: error }, 'Self-improvement cycle encountered an error');
 
@@ -4571,6 +4949,8 @@ export class MasterManager {
     } finally {
       this.isSelfImproving = false;
     }
+
+    return workDone;
   }
 
   /**
@@ -4680,11 +5060,13 @@ ${currentContent}
    * - Its current successRate < previousSuccessRate
    * - It has been used 5+ times since the rewrite (enough signal)
    */
-  private async rollbackDegradedPrompts(): Promise<void> {
+  private async rollbackDegradedPrompts(): Promise<number> {
     const manifest = this.memory
       ? await this.memory.getPromptManifest()
       : await this.dotFolder.readPromptManifest();
-    if (!manifest) return;
+    if (!manifest) return 0;
+
+    let rollbackCount = 0;
 
     for (const prompt of Object.values(manifest.prompts)) {
       if (
@@ -4732,19 +5114,23 @@ ${currentContent}
           }
 
           logger.info({ promptId: prompt.id }, 'Successfully rolled back degraded prompt');
+          rollbackCount++;
         } catch (error) {
           logger.error({ err: error, promptId: prompt.id }, 'Failed to rollback degraded prompt');
         }
       }
     }
+
+    return rollbackCount;
   }
 
   /**
    * Analyze learnings to identify recurring task patterns and create custom profiles.
    * For example: if "test-runner" tasks consistently succeed with specific tools,
    * create a "test-runner" profile.
+   * Returns true if at least one profile was created.
    */
-  private async createProfilesFromLearnings(): Promise<void> {
+  private async createProfilesFromLearnings(): Promise<boolean> {
     // Build a list of { taskType, successCount, failureCount, successRate } from either memory or JSON.
     type TaskTypeStat = {
       taskType: string;
@@ -4764,12 +5150,12 @@ ${currentContent}
           successRate: r.successRate,
         }));
       } catch {
-        return;
+        return false;
       }
     } else {
       const learnings = await this.dotFolder.readLearnings();
       if (!learnings || learnings.entries.length < 10) {
-        return;
+        return false;
       }
       logger.info(
         { learningCount: learnings.entries.length },
@@ -4794,8 +5180,10 @@ ${currentContent}
 
     const totalEntries = taskTypeStats.reduce((s, r) => s + r.successCount + r.failureCount, 0);
     if (totalEntries < 10) {
-      return;
+      return false;
     }
+
+    let profileCreated = false;
 
     // Look for task types with >5 total executions and >70% success rate
     for (const stat of taskTypeStats) {
@@ -4838,21 +5226,25 @@ ${currentContent}
           }
         }
         logger.info({ profileId }, 'Successfully created custom profile from learnings');
+        profileCreated = true;
       } catch (error) {
         logger.error({ err: error, profileId }, 'Failed to create custom profile (non-blocking)');
       }
     }
+
+    return profileCreated;
   }
 
   /**
    * Check if the workspace has changed significantly and update workspace-map.json if needed.
    * Detects changes by checking for new files, modified package.json, new directories, etc.
+   * Returns true if workspace changed and was updated.
    */
-  private async updateWorkspaceMapIfChanged(): Promise<void> {
+  private async updateWorkspaceMapIfChanged(): Promise<boolean> {
     const map = await this.readWorkspaceMapFromStore();
     if (!map) {
       // No map to update
-      return;
+      return false;
     }
 
     logger.info('Checking if workspace has changed significantly');
@@ -4882,9 +5274,13 @@ ${currentContent}
           'package.json has changed since last map generation, triggering re-exploration',
         );
         await this.reExplore();
+        return true;
       }
+
+      return false;
     } catch (error) {
       logger.error({ err: error }, 'Failed to check workspace changes (non-blocking)');
+      return false;
     }
   }
 
@@ -5072,6 +5468,7 @@ ${currentContent}
       marker?: ParsedSpawnMarker,
     ) => Promise<void>,
     attachments?: InboundMessage['attachments'],
+    taskClass?: string,
   ): Promise<string> {
     // Load custom profiles once for all workers
     const customProfilesRegistry = await this.readProfilesFromStore();
@@ -5157,6 +5554,17 @@ ${currentContent}
     const stats = this.workerRegistry.getAggregatedStats();
     logger.info(stats, 'Worker batch stats');
 
+    // Record task efficiency metrics for escalation suppression (OB-1572)
+    if (this.memory && taskClass) {
+      this.memory
+        .recordTaskEfficiency(taskClass, {
+          turnsUsed: stats.totalTurnsUsed ?? 0,
+          workerCount: stats.totalWorkers,
+          durationMs: stats.avgDurationMs * stats.totalWorkers,
+        })
+        .catch((err) => logger.warn({ err, taskClass }, 'Failed to record task efficiency'));
+    }
+
     // Format all results with structured metadata and build the feedback prompt
     const { feedbackPrompt, observations, workerSummaries } = formatWorkerBatch(
       settled,
@@ -5198,6 +5606,7 @@ ${currentContent}
       marker?: ParsedSpawnMarker,
     ) => Promise<void>,
     attachments?: InboundMessage['attachments'],
+    taskClass?: string,
   ): AsyncGenerator<string, string> {
     // Load custom profiles once for all workers
     const customProfilesRegistry = await this.readProfilesFromStore();
@@ -5271,6 +5680,18 @@ ${currentContent}
 
     await this.persistWorkerRegistry();
 
+    // Record task efficiency metrics for escalation suppression (OB-1572)
+    if (this.memory && taskClass) {
+      const progressStats = this.workerRegistry.getAggregatedStats();
+      this.memory
+        .recordTaskEfficiency(taskClass, {
+          turnsUsed: progressStats.totalTurnsUsed ?? 0,
+          workerCount: progressStats.totalWorkers,
+          durationMs: progressStats.avgDurationMs * progressStats.totalWorkers,
+        })
+        .catch((err) => logger.warn({ err, taskClass }, 'Failed to record task efficiency'));
+    }
+
     // Format all results and build the feedback prompt
     const { feedbackPrompt, observations, workerSummaries } = formatWorkerBatch(
       finalSettled,
@@ -5316,7 +5737,21 @@ ${currentContent}
     grantedTools: string[],
     attachments?: InboundMessage['attachments'],
   ): Promise<void> {
-    const newWorkerId = `${originalWorkerId}-escalated`;
+    // Guard against infinite escalation loops (OB-F214): cap at depth 3.
+    // Check worker ID (the actual accumulator), not profile (which gets cleaned).
+    const escalationDepth = (originalWorkerId.match(/-escalated/g) ?? []).length;
+    if (escalationDepth >= 3) {
+      logger.warn(
+        { workerId: originalWorkerId, profile: originalProfile, escalationDepth },
+        'Max escalation depth reached — not respawning',
+      );
+      return;
+    }
+
+    // Strip any existing `-escalated` chain from worker ID before appending,
+    // so IDs stay `{base}-escalated` instead of growing infinitely (OB-F214).
+    const baseWorkerId = originalWorkerId.replace(/-escalated(-escalated)*$/, '');
+    const newWorkerId = `${baseWorkerId}-escalated`;
 
     // Determine whether the grant is a profile upgrade or individual tool names.
     const profileGrant = grantedTools.find((g) => BuiltInProfileNameSchema.safeParse(g).success);
@@ -5335,11 +5770,14 @@ ${currentContent}
       // Individual tool grant — merge with the original profile's tool list.
       const baseTools = resolveProfile(originalProfile) ?? [];
       const mergedTools = [...new Set([...baseTools, ...grantedTools])];
-      const upgradedProfileName = `${originalProfile}-escalated`;
+      // Strip any existing `-escalated` suffix chain so profile names stay `{base}-escalated`
+      // regardless of how many re-grants occur (OB-F214).
+      const baseProfile = originalProfile.replace(/-escalated(-escalated)*$/, '');
+      const upgradedProfileName = `${baseProfile}-escalated`;
       customProfiles = {
         [upgradedProfileName]: {
           name: upgradedProfileName,
-          description: `${originalProfile} + escalated access (${grantedTools.join(', ')})`,
+          description: `${baseProfile} + escalated access (${grantedTools.join(', ')})`,
           tools: mergedTools,
         },
       };
@@ -5646,7 +6084,14 @@ ${currentContent}
     // When a mismatch is predicted, request escalation upfront — the user is asked
     // before the worker is spawned, and the actual spawn is deferred to the respawn
     // callback so no turns are wasted on a predictably blocked worker.
-    const toolPrediction = predictToolRequirements(body.prompt, profile);
+    //
+    // Skip pre-flight for already-escalated workers (OB-F214): respawnWorkerAfterGrant
+    // calls back into spawnWorker — running prediction again creates an infinite loop
+    // (escalate → respawn → predict → escalate → ...) that OOMs the process.
+    const alreadyEscalated = workerId.includes('-escalated');
+    const toolPrediction = alreadyEscalated
+      ? undefined
+      : predictToolRequirements(body.prompt, profile);
     if (toolPrediction && this.router && this.activeMessage) {
       logger.info(
         {

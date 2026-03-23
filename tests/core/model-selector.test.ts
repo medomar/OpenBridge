@@ -303,10 +303,10 @@ describe('Provider-agnostic selection (with ModelRegistry)', () => {
     expect(rec.model).toBe('gpt-4o-mini'); // fast tier (no complexity signals)
 
     const rec2 = recommendByDescription('Refactor the auth module', aiderRegistry);
-    expect(rec2.model).toBe('o1'); // powerful tier (complex keyword)
+    expect(rec2.model).toBe('o3'); // powerful tier (complex keyword)
 
     const rec3 = recommendByDescription('Implement the login form', aiderRegistry);
-    expect(rec3.model).toBe('gpt-4o'); // balanced tier (code edit keyword)
+    expect(rec3.model).toBe('gpt-4.1'); // balanced tier (code edit keyword)
   });
 
   it('recommendModel passes registry through all layers', () => {

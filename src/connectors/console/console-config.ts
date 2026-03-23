@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export const ConsoleConfigSchema = z.object({
   /** Identifier for the console user (used as sender in messages) */

@@ -2,6 +2,7 @@ import https from 'node:https';
 import path from 'node:path';
 import type { Connector, ConnectorEvents } from '../../types/connector.js';
 import type { InboundMessage, OutboundMessage, ProgressEvent } from '../../types/message.js';
+import { processDocument } from '../../intelligence/document-processor.js';
 import { TelegramConfigSchema } from './telegram-config.js';
 import type { TelegramConfig } from './telegram-config.js';
 import { createLogger } from '../../core/logger.js';
@@ -323,6 +324,7 @@ export class TelegramConnector implements Connector {
         if (!largestPhoto) return;
 
         let attachments: InboundMessage['attachments'];
+        let processedDoc: InboundMessage['processedDocument'];
 
         if (bot && mediaManager) {
           await bot.api.sendChatAction(chatId, 'upload_photo').catch(() => {});
@@ -333,6 +335,12 @@ export class TelegramConnector implements Connector {
               mediaManager,
             );
             attachments = [{ type: 'image', filePath, mimeType, sizeBytes }];
+            try {
+              processedDoc = await processDocument(filePath);
+              logger.debug({ filePath, docType: processedDoc.docType }, 'Photo processed');
+            } catch (err) {
+              logger.warn({ err, filePath }, 'Document processing failed for Telegram photo');
+            }
           } catch (err) {
             logger.warn({ err, chatId }, 'Failed to download Telegram photo');
             await bot.api.sendMessage(chatId, '[Failed to process photo]').catch(() => {});
@@ -350,6 +358,9 @@ export class TelegramConnector implements Connector {
           attachments,
           metadata: { chatId },
         };
+        if (processedDoc !== undefined) {
+          inbound.processedDocument = processedDoc;
+        }
 
         this.emit('message', inbound);
       };
@@ -374,6 +385,7 @@ export class TelegramConnector implements Connector {
 
       const handleDocument = async (): Promise<void> => {
         let attachments: InboundMessage['attachments'];
+        let processedDoc: InboundMessage['processedDocument'];
 
         if (bot && mediaManager) {
           await bot.api.sendChatAction(chatId, 'upload_document').catch(() => {});
@@ -392,6 +404,12 @@ export class TelegramConnector implements Connector {
                 sizeBytes,
               },
             ];
+            try {
+              processedDoc = await processDocument(filePath);
+              logger.debug({ filePath, docType: processedDoc.docType }, 'Document processed');
+            } catch (err) {
+              logger.warn({ err, filePath }, 'Document processing failed for Telegram document');
+            }
           } catch (err) {
             logger.warn({ err, chatId }, 'Failed to download Telegram document');
             await bot.api.sendMessage(chatId, '[Failed to process document]').catch(() => {});
@@ -409,6 +427,9 @@ export class TelegramConnector implements Connector {
           attachments,
           metadata: { chatId },
         };
+        if (processedDoc !== undefined) {
+          inbound.processedDocument = processedDoc;
+        }
 
         this.emit('message', inbound);
       };

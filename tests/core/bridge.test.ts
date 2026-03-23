@@ -12,6 +12,24 @@ import type { OutboundMessage } from '../../src/types/message.js';
 import type { AppConfig } from '../../src/types/config.js';
 
 // ---------------------------------------------------------------------------
+// fs/promises mock — used by cleanLegacyDotFolderArtifacts tests (OB-1648)
+// ---------------------------------------------------------------------------
+
+const mockFsAccess = vi.fn<() => Promise<void>>();
+const mockFsUnlink = vi.fn<() => Promise<void>>();
+const mockFsReadFile = vi.fn<() => Promise<string>>();
+const mockFsRm = vi.fn<() => Promise<void>>();
+const mockFsReaddir = vi.fn<() => Promise<string[]>>();
+
+vi.mock('node:fs/promises', () => ({
+  access: (...args: unknown[]) => mockFsAccess(...args),
+  unlink: (...args: unknown[]) => mockFsUnlink(...args),
+  readFile: (...args: unknown[]) => mockFsReadFile(...args),
+  rm: (...args: unknown[]) => mockFsRm(...args),
+  readdir: (...args: unknown[]) => mockFsReaddir(...args),
+}));
+
+// ---------------------------------------------------------------------------
 // Config fixture
 // ---------------------------------------------------------------------------
 
@@ -185,5 +203,54 @@ describe('Bridge.stop() — edge cases', () => {
     await stopPromise;
 
     vi.useRealTimers();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// cleanLegacyDotFolderArtifacts — exploration/ guard (OB-1648)
+// ---------------------------------------------------------------------------
+
+describe('cleanLegacyDotFolderArtifacts — exploration/ guard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Default: all fs operations succeed (files/dirs don't exist paths will be caught)
+    mockFsAccess.mockResolvedValue(undefined);
+    mockFsUnlink.mockRejectedValue(Object.assign(new Error('ENOENT'), { code: 'ENOENT' }));
+    mockFsRm.mockResolvedValue(undefined);
+    mockFsReaddir.mockResolvedValue([]);
+  });
+
+  it('skips exploration/ deletion when state is incomplete', async () => {
+    // exploration-state.json reports status "structure_scan" — exploration in progress
+    mockFsReadFile.mockResolvedValue(JSON.stringify({ status: 'structure_scan' }));
+
+    const memory = { getPromptManifest: vi.fn().mockResolvedValue(null) };
+    const bridge = new Bridge(baseConfig());
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+    await (bridge as any).cleanLegacyDotFolderArtifacts('/fake/workspace', memory);
+
+    // fs.rm must NOT have been called for the exploration/ path
+    const explorationRm = mockFsRm.mock.calls.find((args) =>
+      String(args[0]).includes('exploration'),
+    );
+    expect(explorationRm).toBeUndefined();
+  });
+
+  it('deletes exploration/ when state is completed', async () => {
+    // exploration-state.json reports status "completed" — safe to delete
+    mockFsReadFile.mockResolvedValue(JSON.stringify({ status: 'completed' }));
+
+    const memory = { getPromptManifest: vi.fn().mockResolvedValue(null) };
+    const bridge = new Bridge(baseConfig());
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+    await (bridge as any).cleanLegacyDotFolderArtifacts('/fake/workspace', memory);
+
+    // fs.rm MUST have been called for the exploration/ path
+    const explorationRm = mockFsRm.mock.calls.find((args) =>
+      String(args[0]).includes('exploration'),
+    );
+    expect(explorationRm).toBeDefined();
   });
 });

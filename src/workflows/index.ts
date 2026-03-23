@@ -1,0 +1,25 @@
+// Workflow Engine module
+// Automated triggers, schedules, and multi-step pipelines
+
+export type { WorkflowEngine } from './engine.js';
+export { createWorkflowEngine } from './engine.js';
+export type { WorkflowStore } from './workflow-store.js';
+export { createWorkflowStore } from './workflow-store.js';
+export type { WorkflowScheduler } from './scheduler.js';
+export { createWorkflowScheduler } from './scheduler.js';
+
+// Trigger implementations
+export * from './triggers/index.js';
+
+// Step implementations
+export * from './steps/query-step.js';
+export * from './steps/send-step.js';
+export * from './steps/approval-step.js';
+
+// Pre-built workflows
+export {
+  buildDailyAnalysisWorkflow,
+  shouldInstallDailyAnalysis,
+  autoInstallDailyAnalysis,
+  prepareDailyAnalysisInput,
+} from './proactive-daily-analysis.js';

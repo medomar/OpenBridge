@@ -1,0 +1,817 @@
+{
+  "id": "services",
+  "name": "Services",
+  "description": "Professional services business — consulting, agency, freelance, or managed services — client management, project tracking, invoicing, and time tracking.",
+  "skillPack": "skill-pack.md",
+  "sampleQueries": [
+    "Add a new client: Acme Corp, contact John Smith, john@acme.com, net-30 payment terms",
+    "Create a project: Website Redesign for Acme Corp, $12,000 budget, due 2026-04-30",
+    "Log 3 hours on Website Redesign — task: homepage layout",
+    "Create an invoice for Acme Corp: $4,000 for milestone 1 completion",
+    "Which invoices are overdue?",
+    "How many billable hours have I logged this week?",
+    "Show me all active projects and their progress",
+    "Mark invoice INV-042 as paid",
+    "What's my total revenue this month?",
+    "Which project is closest to exceeding its budget?"
+  ],
+  "doctypes": [
+    {
+      "doctype": {
+        "name": "client",
+        "label_singular": "Client",
+        "label_plural": "Clients",
+        "icon": "building",
+        "table_name": "dt_clients",
+        "source": "template"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "label": "Company Name",
+          "field_type": "text",
+          "required": true,
+          "searchable": true,
+          "sort_order": 0
+        },
+        {
+          "name": "contact_name",
+          "label": "Primary Contact",
+          "field_type": "text",
+          "searchable": true,
+          "sort_order": 1
+        },
+        {
+          "name": "email",
+          "label": "Email",
+          "field_type": "email",
+          "searchable": true,
+          "sort_order": 2
+        },
+        { "name": "phone", "label": "Phone", "field_type": "phone", "sort_order": 3 },
+        {
+          "name": "industry",
+          "label": "Industry",
+          "field_type": "select",
+          "sort_order": 4,
+          "options": [
+            "technology",
+            "finance",
+            "healthcare",
+            "retail",
+            "manufacturing",
+            "real-estate",
+            "education",
+            "media",
+            "legal",
+            "other"
+          ]
+        },
+        {
+          "name": "billing_address",
+          "label": "Billing Address",
+          "field_type": "text",
+          "sort_order": 5
+        },
+        {
+          "name": "payment_terms",
+          "label": "Payment Terms",
+          "field_type": "select",
+          "sort_order": 6,
+          "options": ["due-on-receipt", "net-15", "net-30", "net-60"]
+        },
+        {
+          "name": "hourly_rate",
+          "label": "Default Hourly Rate",
+          "field_type": "currency",
+          "sort_order": 7
+        },
+        {
+          "name": "total_billed",
+          "label": "Total Billed to Date",
+          "field_type": "currency",
+          "sort_order": 8
+        },
+        {
+          "name": "referral_source",
+          "label": "Referral Source",
+          "field_type": "text",
+          "sort_order": 9
+        },
+        { "name": "notes", "label": "Notes", "field_type": "longtext", "sort_order": 10 }
+      ],
+      "states": [
+        {
+          "name": "prospect",
+          "label": "Prospect",
+          "color": "blue",
+          "is_initial": true,
+          "sort_order": 0
+        },
+        { "name": "active", "label": "Active", "color": "green", "sort_order": 1 },
+        { "name": "on_hold", "label": "On Hold", "color": "orange", "sort_order": 2 },
+        {
+          "name": "inactive",
+          "label": "Inactive",
+          "color": "gray",
+          "is_terminal": true,
+          "sort_order": 3
+        }
+      ],
+      "transitions": [
+        {
+          "from_state": "prospect",
+          "to_state": "active",
+          "action_name": "convert",
+          "action_label": "Convert to Client"
+        },
+        {
+          "from_state": "active",
+          "to_state": "on_hold",
+          "action_name": "pause",
+          "action_label": "Put On Hold"
+        },
+        {
+          "from_state": "on_hold",
+          "to_state": "active",
+          "action_name": "reactivate",
+          "action_label": "Reactivate"
+        },
+        {
+          "from_state": "active",
+          "to_state": "inactive",
+          "action_name": "close",
+          "action_label": "Close Account"
+        },
+        {
+          "from_state": "on_hold",
+          "to_state": "inactive",
+          "action_name": "close",
+          "action_label": "Close Account"
+        }
+      ],
+      "hooks": [
+        {
+          "event": "after_insert",
+          "action_type": "send_notification",
+          "action_config": {
+            "message": "New client added: {{name}} ({{contact_name}}) — {{payment_terms}} payment terms"
+          }
+        }
+      ],
+      "relations": []
+    },
+    {
+      "doctype": {
+        "name": "project",
+        "label_singular": "Project",
+        "label_plural": "Projects",
+        "icon": "folder",
+        "table_name": "dt_projects",
+        "source": "template"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "label": "Project Name",
+          "field_type": "text",
+          "required": true,
+          "searchable": true,
+          "sort_order": 0
+        },
+        {
+          "name": "client_id",
+          "label": "Client",
+          "field_type": "link",
+          "required": true,
+          "sort_order": 1,
+          "link_doctype": "client"
+        },
+        {
+          "name": "description",
+          "label": "Description",
+          "field_type": "longtext",
+          "sort_order": 2
+        },
+        {
+          "name": "project_type",
+          "label": "Project Type",
+          "field_type": "select",
+          "sort_order": 3,
+          "options": ["fixed-price", "time-and-materials", "retainer", "milestone-based"]
+        },
+        { "name": "budget", "label": "Budget", "field_type": "currency", "sort_order": 4 },
+        {
+          "name": "billed_to_date",
+          "label": "Billed to Date",
+          "field_type": "currency",
+          "sort_order": 5
+        },
+        {
+          "name": "budget_remaining",
+          "label": "Budget Remaining",
+          "field_type": "currency",
+          "sort_order": 6,
+          "formula": "budget - billed_to_date",
+          "depends_on": "budget,billed_to_date"
+        },
+        { "name": "start_date", "label": "Start Date", "field_type": "date", "sort_order": 7 },
+        { "name": "due_date", "label": "Due Date", "field_type": "date", "sort_order": 8 },
+        {
+          "name": "estimated_hours",
+          "label": "Estimated Hours",
+          "field_type": "number",
+          "sort_order": 9
+        },
+        {
+          "name": "logged_hours",
+          "label": "Hours Logged",
+          "field_type": "number",
+          "sort_order": 10
+        },
+        {
+          "name": "current_milestone",
+          "label": "Current Milestone",
+          "field_type": "text",
+          "sort_order": 11
+        },
+        { "name": "notes", "label": "Notes", "field_type": "longtext", "sort_order": 12 }
+      ],
+      "states": [
+        {
+          "name": "scoping",
+          "label": "Scoping",
+          "color": "blue",
+          "is_initial": true,
+          "sort_order": 0
+        },
+        { "name": "active", "label": "Active", "color": "green", "sort_order": 1 },
+        { "name": "on_hold", "label": "On Hold", "color": "orange", "sort_order": 2 },
+        { "name": "completed", "label": "Completed", "color": "purple", "sort_order": 3 },
+        {
+          "name": "cancelled",
+          "label": "Cancelled",
+          "color": "gray",
+          "is_terminal": true,
+          "sort_order": 4
+        }
+      ],
+      "transitions": [
+        {
+          "from_state": "scoping",
+          "to_state": "active",
+          "action_name": "kick_off",
+          "action_label": "Kick Off Project"
+        },
+        {
+          "from_state": "scoping",
+          "to_state": "cancelled",
+          "action_name": "cancel",
+          "action_label": "Cancel"
+        },
+        {
+          "from_state": "active",
+          "to_state": "on_hold",
+          "action_name": "pause",
+          "action_label": "Put On Hold"
+        },
+        {
+          "from_state": "on_hold",
+          "to_state": "active",
+          "action_name": "resume",
+          "action_label": "Resume"
+        },
+        {
+          "from_state": "active",
+          "to_state": "completed",
+          "action_name": "complete",
+          "action_label": "Mark Complete"
+        },
+        {
+          "from_state": "active",
+          "to_state": "cancelled",
+          "action_name": "cancel",
+          "action_label": "Cancel"
+        }
+      ],
+      "hooks": [
+        {
+          "event": "after_insert",
+          "action_type": "send_notification",
+          "action_config": {
+            "message": "New project created: {{name}} for {{client_id}} — ${{budget}} budget, due {{due_date}}"
+          }
+        },
+        {
+          "event": "on_state_change",
+          "action_type": "run_workflow",
+          "action_config": {
+            "condition": "new_state == 'completed'",
+            "workflow": "project-milestone-notification"
+          }
+        }
+      ],
+      "relations": [
+        {
+          "from_doctype": "project",
+          "to_doctype": "client",
+          "relation_type": "belongs_to",
+          "from_field": "client_id",
+          "to_field": "id",
+          "label": "Belongs to client"
+        }
+      ]
+    },
+    {
+      "doctype": {
+        "name": "invoice",
+        "label_singular": "Invoice",
+        "label_plural": "Invoices",
+        "icon": "file-text",
+        "table_name": "dt_invoices",
+        "source": "template"
+      },
+      "fields": [
+        {
+          "name": "invoice_number",
+          "label": "Invoice Number",
+          "field_type": "text",
+          "required": true,
+          "searchable": true,
+          "sort_order": 0
+        },
+        {
+          "name": "client_id",
+          "label": "Client",
+          "field_type": "link",
+          "required": true,
+          "sort_order": 1,
+          "link_doctype": "client"
+        },
+        {
+          "name": "project_id",
+          "label": "Project",
+          "field_type": "link",
+          "sort_order": 2,
+          "link_doctype": "project"
+        },
+        {
+          "name": "issue_date",
+          "label": "Issue Date",
+          "field_type": "date",
+          "required": true,
+          "sort_order": 3
+        },
+        {
+          "name": "due_date",
+          "label": "Due Date",
+          "field_type": "date",
+          "required": true,
+          "sort_order": 4
+        },
+        {
+          "name": "line_items",
+          "label": "Line Items",
+          "field_type": "longtext",
+          "required": true,
+          "sort_order": 5
+        },
+        {
+          "name": "subtotal",
+          "label": "Subtotal",
+          "field_type": "currency",
+          "required": true,
+          "sort_order": 6
+        },
+        { "name": "tax_rate", "label": "Tax Rate (%)", "field_type": "number", "sort_order": 7 },
+        {
+          "name": "tax_amount",
+          "label": "Tax Amount",
+          "field_type": "currency",
+          "sort_order": 8,
+          "formula": "subtotal * (tax_rate / 100)",
+          "depends_on": "subtotal,tax_rate"
+        },
+        {
+          "name": "total",
+          "label": "Total",
+          "field_type": "currency",
+          "required": true,
+          "sort_order": 9,
+          "formula": "subtotal + tax_amount",
+          "depends_on": "subtotal,tax_amount"
+        },
+        { "name": "paid_date", "label": "Date Paid", "field_type": "date", "sort_order": 10 },
+        {
+          "name": "payment_method",
+          "label": "Payment Method",
+          "field_type": "select",
+          "sort_order": 11,
+          "options": ["bank-transfer", "card", "check", "cash", "paypal", "stripe", "other"]
+        },
+        {
+          "name": "notes",
+          "label": "Notes / Payment Instructions",
+          "field_type": "longtext",
+          "sort_order": 12
+        }
+      ],
+      "states": [
+        { "name": "draft", "label": "Draft", "color": "gray", "is_initial": true, "sort_order": 0 },
+        { "name": "sent", "label": "Sent", "color": "blue", "sort_order": 1 },
+        { "name": "overdue", "label": "Overdue", "color": "red", "sort_order": 2 },
+        { "name": "paid", "label": "Paid", "color": "green", "sort_order": 3 },
+        {
+          "name": "cancelled",
+          "label": "Cancelled",
+          "color": "gray",
+          "is_terminal": true,
+          "sort_order": 4
+        }
+      ],
+      "transitions": [
+        {
+          "from_state": "draft",
+          "to_state": "sent",
+          "action_name": "send",
+          "action_label": "Send Invoice"
+        },
+        {
+          "from_state": "draft",
+          "to_state": "cancelled",
+          "action_name": "cancel",
+          "action_label": "Cancel"
+        },
+        {
+          "from_state": "sent",
+          "to_state": "paid",
+          "action_name": "mark_paid",
+          "action_label": "Mark as Paid"
+        },
+        {
+          "from_state": "sent",
+          "to_state": "overdue",
+          "action_name": "flag_overdue",
+          "action_label": "Flag Overdue"
+        },
+        {
+          "from_state": "overdue",
+          "to_state": "paid",
+          "action_name": "mark_paid",
+          "action_label": "Mark as Paid"
+        },
+        {
+          "from_state": "sent",
+          "to_state": "cancelled",
+          "action_name": "cancel",
+          "action_label": "Cancel"
+        }
+      ],
+      "hooks": [
+        {
+          "event": "after_insert",
+          "action_type": "send_notification",
+          "action_config": {
+            "message": "Invoice {{invoice_number}} created: ${{total}} due {{due_date}} for {{client_id}}"
+          }
+        },
+        {
+          "event": "on_state_change",
+          "action_type": "run_workflow",
+          "action_config": {
+            "condition": "new_state == 'overdue'",
+            "workflow": "invoice-overdue-reminder"
+          }
+        }
+      ],
+      "relations": [
+        {
+          "from_doctype": "invoice",
+          "to_doctype": "client",
+          "relation_type": "belongs_to",
+          "from_field": "client_id",
+          "to_field": "id",
+          "label": "Billed to"
+        },
+        {
+          "from_doctype": "invoice",
+          "to_doctype": "project",
+          "relation_type": "belongs_to",
+          "from_field": "project_id",
+          "to_field": "id",
+          "label": "For project"
+        }
+      ]
+    },
+    {
+      "doctype": {
+        "name": "timesheet",
+        "label_singular": "Timesheet Entry",
+        "label_plural": "Timesheet Entries",
+        "icon": "clock",
+        "table_name": "dt_timesheets",
+        "source": "template"
+      },
+      "fields": [
+        {
+          "name": "date",
+          "label": "Date",
+          "field_type": "date",
+          "required": true,
+          "searchable": true,
+          "sort_order": 0
+        },
+        {
+          "name": "project_id",
+          "label": "Project",
+          "field_type": "link",
+          "required": true,
+          "sort_order": 1,
+          "link_doctype": "project"
+        },
+        {
+          "name": "client_id",
+          "label": "Client",
+          "field_type": "link",
+          "sort_order": 2,
+          "link_doctype": "client"
+        },
+        {
+          "name": "task",
+          "label": "Task / Description",
+          "field_type": "text",
+          "required": true,
+          "searchable": true,
+          "sort_order": 3
+        },
+        {
+          "name": "hours",
+          "label": "Hours",
+          "field_type": "number",
+          "required": true,
+          "sort_order": 4
+        },
+        {
+          "name": "hourly_rate",
+          "label": "Hourly Rate",
+          "field_type": "currency",
+          "sort_order": 5
+        },
+        {
+          "name": "amount",
+          "label": "Billable Amount",
+          "field_type": "currency",
+          "sort_order": 6,
+          "formula": "hours * hourly_rate",
+          "depends_on": "hours,hourly_rate"
+        },
+        { "name": "is_billable", "label": "Billable", "field_type": "checkbox", "sort_order": 7 },
+        {
+          "name": "invoice_id",
+          "label": "Invoice",
+          "field_type": "link",
+          "sort_order": 8,
+          "link_doctype": "invoice"
+        },
+        { "name": "notes", "label": "Notes", "field_type": "longtext", "sort_order": 9 }
+      ],
+      "states": [
+        {
+          "name": "logged",
+          "label": "Logged",
+          "color": "blue",
+          "is_initial": true,
+          "sort_order": 0
+        },
+        { "name": "approved", "label": "Approved", "color": "green", "sort_order": 1 },
+        {
+          "name": "invoiced",
+          "label": "Invoiced",
+          "color": "purple",
+          "is_terminal": true,
+          "sort_order": 2
+        }
+      ],
+      "transitions": [
+        {
+          "from_state": "logged",
+          "to_state": "approved",
+          "action_name": "approve",
+          "action_label": "Approve"
+        },
+        {
+          "from_state": "approved",
+          "to_state": "invoiced",
+          "action_name": "invoice",
+          "action_label": "Mark Invoiced"
+        },
+        {
+          "from_state": "logged",
+          "to_state": "invoiced",
+          "action_name": "invoice",
+          "action_label": "Mark Invoiced"
+        }
+      ],
+      "hooks": [],
+      "relations": [
+        {
+          "from_doctype": "timesheet",
+          "to_doctype": "project",
+          "relation_type": "belongs_to",
+          "from_field": "project_id",
+          "to_field": "id",
+          "label": "Logged on project"
+        },
+        {
+          "from_doctype": "timesheet",
+          "to_doctype": "client",
+          "relation_type": "belongs_to",
+          "from_field": "client_id",
+          "to_field": "id",
+          "label": "Billed to client"
+        }
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "name": "Invoice Overdue Reminder",
+      "description": "Checks daily for unpaid invoices past their due date and sends a reminder with the overdue amounts.",
+      "trigger": {
+        "type": "schedule",
+        "cron": "0 9 * * *"
+      },
+      "steps": [
+        {
+          "id": "query-overdue-invoices",
+          "name": "Find overdue invoices",
+          "type": "query",
+          "config": {
+            "doctype": "invoice",
+            "filter": "due_date < date('now') AND status IN ('sent', 'overdue')",
+            "fields": ["invoice_number", "client_id", "due_date", "total", "issue_date"]
+          },
+          "sort_order": 0
+        },
+        {
+          "id": "check-has-overdue",
+          "name": "Check if any invoices are overdue",
+          "type": "condition",
+          "config": {
+            "expression": "results.length > 0",
+            "on_false": "skip_remaining"
+          },
+          "sort_order": 1
+        },
+        {
+          "id": "format-reminder",
+          "name": "Format overdue reminder",
+          "type": "transform",
+          "config": {
+            "template": "Overdue Invoices:\n{{#each results}}\n- {{invoice_number}}: ${{total}} from {{client_id}}, due {{due_date}}\n{{/each}}"
+          },
+          "sort_order": 2
+        },
+        {
+          "id": "send-reminder",
+          "name": "Send overdue reminder",
+          "type": "send",
+          "config": {
+            "channel": "default",
+            "message": "Invoice Overdue Reminder:\n{{formatted_output}}"
+          },
+          "sort_order": 3
+        }
+      ],
+      "status": "active"
+    },
+    {
+      "name": "Project Milestone Notification",
+      "description": "Sends a notification when a project reaches a key milestone or is marked complete, summarising deliverables and next steps.",
+      "trigger": {
+        "type": "event",
+        "on": "project.on_state_change"
+      },
+      "steps": [
+        {
+          "id": "get-project-details",
+          "name": "Get project details",
+          "type": "query",
+          "config": {
+            "doctype": "project",
+            "filter": "id = {{trigger.record_id}}",
+            "fields": [
+              "name",
+              "client_id",
+              "current_milestone",
+              "billed_to_date",
+              "budget",
+              "due_date",
+              "logged_hours",
+              "estimated_hours"
+            ]
+          },
+          "sort_order": 0
+        },
+        {
+          "id": "get-unbilled-hours",
+          "name": "Get unbilled timesheet hours",
+          "type": "query",
+          "config": {
+            "doctype": "timesheet",
+            "filter": "project_id = {{trigger.record_id}} AND status = 'approved' AND is_billable = 1",
+            "fields": ["hours", "amount", "task", "date"]
+          },
+          "sort_order": 1
+        },
+        {
+          "id": "generate-summary",
+          "name": "AI generates milestone summary",
+          "type": "ai",
+          "config": {
+            "prompt": "The project '{{project.name}}' for client '{{project.client_id}}' has reached a milestone (state changed to {{trigger.new_state}}). Summarise: (1) Current milestone: {{project.current_milestone}}, (2) Budget used: ${{project.billed_to_date}} of ${{project.budget}}, (3) Hours logged: {{project.logged_hours}} of {{project.estimated_hours}} estimated, (4) Unbilled approved hours ready to invoice. Suggest next steps.",
+            "tool_profile": "read-only",
+            "max_turns": 2
+          },
+          "sort_order": 2
+        },
+        {
+          "id": "send-notification",
+          "name": "Send milestone notification",
+          "type": "send",
+          "config": {
+            "channel": "default",
+            "message": "Project Milestone — {{project.name}}:\n{{ai_output}}"
+          },
+          "sort_order": 3
+        }
+      ],
+      "status": "active"
+    },
+    {
+      "name": "Monthly Revenue Report",
+      "description": "Generates a monthly revenue summary on the first of each month: total invoiced, total collected, outstanding balance, and top clients by revenue.",
+      "trigger": {
+        "type": "schedule",
+        "cron": "0 8 1 * *"
+      },
+      "steps": [
+        {
+          "id": "get-last-month-invoices",
+          "name": "Get last month's invoices",
+          "type": "query",
+          "config": {
+            "doctype": "invoice",
+            "filter": "issue_date >= date('now', 'start of month', '-1 month') AND issue_date < date('now', 'start of month')",
+            "fields": ["invoice_number", "client_id", "total", "status", "paid_date"]
+          },
+          "sort_order": 0
+        },
+        {
+          "id": "get-outstanding-invoices",
+          "name": "Get all outstanding invoices",
+          "type": "query",
+          "config": {
+            "doctype": "invoice",
+            "filter": "status IN ('sent', 'overdue')",
+            "fields": ["invoice_number", "client_id", "total", "due_date", "status"]
+          },
+          "sort_order": 1
+        },
+        {
+          "id": "get-monthly-hours",
+          "name": "Get last month's billable hours",
+          "type": "query",
+          "config": {
+            "doctype": "timesheet",
+            "filter": "date >= date('now', 'start of month', '-1 month') AND date < date('now', 'start of month') AND is_billable = 1",
+            "fields": ["project_id", "client_id", "hours", "amount"]
+          },
+          "sort_order": 2
+        },
+        {
+          "id": "generate-report",
+          "name": "AI generates monthly revenue report",
+          "type": "ai",
+          "config": {
+            "prompt": "Generate a monthly revenue report. Calculate: (1) Total invoiced last month, (2) Total collected (paid invoices), (3) Total outstanding (sent + overdue invoices), (4) Total billable hours logged last month, (5) Effective hourly rate (total invoiced / billable hours), (6) Top 5 clients by revenue last month. Flag any clients with significant outstanding balances over 30 days.",
+            "tool_profile": "read-only",
+            "max_turns": 3
+          },
+          "sort_order": 3
+        },
+        {
+          "id": "send-report",
+          "name": "Send monthly revenue report",
+          "type": "send",
+          "config": {
+            "channel": "default",
+            "message": "Monthly Revenue Report:\n{{ai_output}}"
+          },
+          "sort_order": 4
+        }
+      ],
+      "status": "active"
+    }
+  ]
+}

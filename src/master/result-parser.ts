@@ -8,7 +8,7 @@
  * 4. Return parse error for retry handling
  */
 
-import { type ZodSchema } from 'zod';
+import { type ZodSchema } from 'zod/v3';
 
 import { createLogger } from '../core/logger.js';
 

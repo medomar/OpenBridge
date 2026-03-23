@@ -86,12 +86,22 @@ export class DotFolderManager {
    * Returns null if the file doesn't exist or is invalid.
    */
   public async readWorkspaceMap(): Promise<WorkspaceMap | null> {
+    const mapPath = this.getMapPath();
+
+    // Check existence before reading to avoid ENOENT spam on first run
     try {
-      const content = await fs.readFile(this.getMapPath(), 'utf-8');
+      await fs.access(mapPath);
+    } catch {
+      logger.debug({ path: mapPath }, 'workspace-map.json not found');
+      return null;
+    }
+
+    try {
+      const content = await fs.readFile(mapPath, 'utf-8');
       const data = JSON.parse(content) as unknown;
       return WorkspaceMapSchema.parse(data);
     } catch (err) {
-      logger.warn({ err, path: this.getMapPath() }, 'Failed to read workspace-map.json');
+      logger.warn({ err, path: mapPath }, 'Failed to read workspace-map.json');
       return null;
     }
   }
@@ -102,6 +112,7 @@ export class DotFolderManager {
    */
   public async writeWorkspaceMap(map: WorkspaceMap): Promise<void> {
     const validated = WorkspaceMapSchema.parse(map);
+    await fs.mkdir(this.dotFolderPath, { recursive: true });
     await fs.writeFile(this.getMapPath(), JSON.stringify(validated, null, 2), 'utf-8');
   }
 
@@ -160,7 +171,11 @@ export class DotFolderManager {
       const data = JSON.parse(content) as unknown;
       return WorkspaceAnalysisMarkerSchema.parse(data);
     } catch (err) {
-      logger.warn({ err, path: markerPath }, 'Failed to read analysis-marker.json');
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.debug({ path: markerPath }, 'File not found (expected on first run)');
+      } else {
+        logger.warn({ err, path: markerPath }, 'Failed to read analysis-marker.json');
+      }
       return null;
     }
   }
@@ -171,6 +186,7 @@ export class DotFolderManager {
    */
   public async writeAnalysisMarker(marker: WorkspaceAnalysisMarker): Promise<void> {
     const validated = WorkspaceAnalysisMarkerSchema.parse(marker);
+    await fs.mkdir(this.dotFolderPath, { recursive: true });
     const markerPath = this.getAnalysisMarkerPath();
     await fs.writeFile(markerPath, JSON.stringify(validated, null, 2), 'utf-8');
   }
@@ -186,7 +202,11 @@ export class DotFolderManager {
       const data = JSON.parse(content) as unknown;
       return AgentsRegistrySchema.parse(data);
     } catch (err) {
-      logger.warn({ err, path: agentsPath }, 'Failed to read agents.json');
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.debug({ path: agentsPath }, 'File not found (expected on first run)');
+      } else {
+        logger.warn({ err, path: agentsPath }, 'Failed to read agents.json');
+      }
       return null;
     }
   }
@@ -252,7 +272,11 @@ export class DotFolderManager {
       const data = JSON.parse(content) as unknown;
       return ExplorationStateSchema.parse(data);
     } catch (err) {
-      logger.warn({ err, path: statePath }, 'Failed to read exploration-state.json');
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.debug({ path: statePath }, 'File not found (expected on first run)');
+      } else {
+        logger.warn({ err, path: statePath }, 'Failed to read exploration-state.json');
+      }
       return null;
     }
   }
@@ -280,7 +304,11 @@ export class DotFolderManager {
       const data = JSON.parse(content) as unknown;
       return StructureScanSchema.parse(data);
     } catch (err) {
-      logger.warn({ err, path: scanPath }, 'Failed to read structure-scan.json');
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.debug({ path: scanPath }, 'File not found (expected on first run)');
+      } else {
+        logger.warn({ err, path: scanPath }, 'Failed to read structure-scan.json');
+      }
       return null;
     }
   }
@@ -308,7 +336,11 @@ export class DotFolderManager {
       const data = JSON.parse(content) as unknown;
       return ClassificationSchema.parse(data);
     } catch (err) {
-      logger.warn({ err, path: classificationPath }, 'Failed to read classification.json');
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.debug({ path: classificationPath }, 'File not found (expected on first run)');
+      } else {
+        logger.warn({ err, path: classificationPath }, 'Failed to read classification.json');
+      }
       return null;
     }
   }
@@ -336,7 +368,11 @@ export class DotFolderManager {
       const data = JSON.parse(content) as unknown;
       return DirectoryDiveResultSchema.parse(data);
     } catch (err) {
-      logger.warn({ err, path: divePath }, 'Failed to read directory dive result');
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.debug({ path: divePath }, 'File not found (expected on first run)');
+      } else {
+        logger.warn({ err, path: divePath }, 'Failed to read directory dive result');
+      }
       return null;
     }
   }
@@ -371,7 +407,11 @@ export class DotFolderManager {
       const data = JSON.parse(content) as unknown;
       return ProfilesRegistrySchema.parse(data);
     } catch (err) {
-      logger.warn({ err, path: profilesPath }, 'Failed to read profiles.json');
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.debug({ path: profilesPath }, 'File not found (expected on first run)');
+      } else {
+        logger.warn({ err, path: profilesPath }, 'Failed to read profiles.json');
+      }
       return null;
     }
   }
@@ -449,7 +489,11 @@ export class DotFolderManager {
       const data = JSON.parse(content) as unknown;
       return MasterSessionSchema.parse(data);
     } catch (err) {
-      logger.warn({ err, path: sessionPath }, 'Failed to read master-session.json');
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.debug({ path: sessionPath }, 'File not found (expected on first run)');
+      } else {
+        logger.warn({ err, path: sessionPath }, 'Failed to read master-session.json');
+      }
       return null;
     }
   }
@@ -481,10 +525,19 @@ export class DotFolderManager {
    * Read the master system prompt from .openbridge/prompts/master-system.md
    */
   public async readSystemPrompt(): Promise<string | null> {
+    const systemPromptPath = this.getSystemPromptPath();
+
+    // Check existence before reading to avoid ENOENT spam on first run
     try {
-      return await fs.readFile(this.getSystemPromptPath(), 'utf-8');
+      await fs.access(systemPromptPath);
+    } catch {
+      return null;
+    }
+
+    try {
+      return await fs.readFile(systemPromptPath, 'utf-8');
     } catch (err) {
-      logger.warn({ err, path: this.getSystemPromptPath() }, 'Failed to read master-system.md');
+      logger.warn({ err, path: systemPromptPath }, 'Failed to read master-system.md');
       return null;
     }
   }
@@ -516,7 +569,11 @@ export class DotFolderManager {
       const data = JSON.parse(content) as unknown;
       return WorkersRegistrySchema.parse(data);
     } catch (err) {
-      logger.warn({ err, path: workersPath }, 'Failed to read workers.json');
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.debug({ path: workersPath }, 'File not found (expected on first run)');
+      } else {
+        logger.warn({ err, path: workersPath }, 'Failed to read workers.json');
+      }
       return null;
     }
   }
@@ -549,6 +606,14 @@ export class DotFolderManager {
    */
   public async readLearnings(): Promise<LearningsRegistry | null> {
     const learningsPath = this.getLearningsPath();
+
+    // Check existence before reading to avoid ENOENT spam on first run
+    try {
+      await fs.access(learningsPath);
+    } catch {
+      logger.debug({ path: learningsPath }, 'learnings.json not found');
+      return null;
+    }
 
     try {
       const content = await fs.readFile(learningsPath, 'utf-8');
@@ -729,7 +794,11 @@ export class DotFolderManager {
       const content = await fs.readFile(classificationsPath, 'utf-8');
       return ClassificationCacheSchema.parse(JSON.parse(content));
     } catch (err) {
-      logger.warn({ err, path: classificationsPath }, 'Failed to read classifications.json');
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.debug({ path: classificationsPath }, 'File not found (expected on first run)');
+      } else {
+        logger.warn({ err, path: classificationsPath }, 'Failed to read classifications.json');
+      }
       return null;
     }
   }
@@ -757,12 +826,22 @@ export class DotFolderManager {
    * Returns null if the file does not exist or cannot be parsed.
    */
   public async readPromptManifest(): Promise<PromptManifest | null> {
+    const manifestPath = this.getPromptManifestPath();
+
+    // Check existence before reading to avoid ENOENT spam on first run
     try {
-      const content = await fs.readFile(this.getPromptManifestPath(), 'utf-8');
+      await fs.access(manifestPath);
+    } catch {
+      logger.debug({ path: manifestPath }, 'manifest.json not found');
+      return null;
+    }
+
+    try {
+      const content = await fs.readFile(manifestPath, 'utf-8');
       const data = JSON.parse(content) as unknown;
       return PromptManifestSchema.parse(data);
     } catch (err) {
-      logger.warn({ err, path: this.getPromptManifestPath() }, 'Failed to read manifest.json');
+      logger.warn({ err, path: manifestPath }, 'Failed to read manifest.json');
       return null;
     }
   }
@@ -924,7 +1003,11 @@ export class DotFolderManager {
     try {
       return await fs.readFile(this.getMemoryFilePath(), 'utf-8');
     } catch (err) {
-      logger.warn({ err, path: this.getMemoryFilePath() }, 'Failed to read memory.md');
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        logger.debug({ path: this.getMemoryFilePath() }, 'File not found (expected on first run)');
+      } else {
+        logger.warn({ err, path: this.getMemoryFilePath() }, 'Failed to read memory.md');
+      }
       return null;
     }
   }
@@ -1077,12 +1160,22 @@ export class DotFolderManager {
    * Returns null if the file does not exist or cannot be parsed.
    */
   public async readBatchState(): Promise<BatchState | null> {
+    const batchStatePath = this.getBatchStatePath();
+
+    // Check existence before reading to avoid ENOENT spam on first run
     try {
-      const content = await fs.readFile(this.getBatchStatePath(), 'utf-8');
+      await fs.access(batchStatePath);
+    } catch {
+      logger.debug({ path: batchStatePath }, 'batch-state.json not found');
+      return null;
+    }
+
+    try {
+      const content = await fs.readFile(batchStatePath, 'utf-8');
       const data = JSON.parse(content) as unknown;
       return BatchStateSchema.parse(data);
     } catch (err) {
-      logger.warn({ err, path: this.getBatchStatePath() }, 'Failed to read batch-state.json');
+      logger.warn({ err, path: batchStatePath }, 'Failed to read batch-state.json');
       return null;
     }
   }
@@ -1104,6 +1197,63 @@ export class DotFolderManager {
       await fs.unlink(this.getBatchStatePath());
     } catch {
       // File may not exist — ignore
+    }
+  }
+
+  // ── Industry Templates ──────────────────────────────────────────
+
+  /**
+   * Get the path to the industry-templates directory.
+   */
+  public getIndustryTemplatesPath(): string {
+    return path.join(this.dotFolderPath, 'industry-templates');
+  }
+
+  /**
+   * List available industry templates from `.openbridge/industry-templates/`.
+   * Reads each sub-directory's manifest.json to extract metadata.
+   * Returns an empty array when the directory does not exist or no valid manifests are found.
+   *
+   * OB-1466
+   */
+  public async listAvailableTemplates(): Promise<
+    Array<{ id: string; name: string; doctypeCount: number; workflowCount: number }>
+  > {
+    const templatesDir = this.getIndustryTemplatesPath();
+    try {
+      const entries = await fs.readdir(templatesDir, { withFileTypes: true });
+      const results: Array<{
+        id: string;
+        name: string;
+        doctypeCount: number;
+        workflowCount: number;
+      }> = [];
+
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const manifestPath = path.join(templatesDir, entry.name, 'manifest.json');
+        try {
+          const content = await fs.readFile(manifestPath, 'utf-8');
+          const data = JSON.parse(content) as {
+            id?: string;
+            name?: string;
+            doctypes?: unknown[];
+            workflows?: unknown[];
+          };
+          results.push({
+            id: typeof data.id === 'string' ? data.id : entry.name,
+            name: typeof data.name === 'string' ? data.name : entry.name,
+            doctypeCount: Array.isArray(data.doctypes) ? data.doctypes.length : 0,
+            workflowCount: Array.isArray(data.workflows) ? data.workflows.length : 0,
+          });
+        } catch {
+          // Skip directories with missing or malformed manifest.json
+        }
+      }
+
+      return results;
+    } catch {
+      return [];
     }
   }
 }

@@ -1,232 +1,335 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en" data-theme="light">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>OpenBridge WebChat</title>
-  <link rel="manifest" href="/manifest.json" />
-  <link rel="stylesheet" href="css/styles.css" />
-  <script>
-    (function () {
-      var t = localStorage.getItem('ob-theme');
-      if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
-    })();
-  </script>
-  <script>window.__OB_PUBLIC_URL__ = null;</script>
-</head>
-<body>
-  <!-- Sidebar overlay (mobile backdrop) -->
-  <div id="sidebar-overlay" class="sidebar-overlay" aria-hidden="true"></div>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>OpenBridge WebChat</title>
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="stylesheet" href="css/styles.css" />
+    <script>
+      (function () {
+        var t = localStorage.getItem('ob-theme');
+        if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+      })();
+    </script>
+    <script>
+      window.__OB_PUBLIC_URL__ = null;
+    </script>
+  </head>
+  <body>
+    <!-- Sidebar overlay (mobile backdrop) -->
+    <div id="sidebar-overlay" class="sidebar-overlay" aria-hidden="true"></div>
 
-  <!-- Sidebar panel -->
-  <nav id="sidebar" class="sidebar" aria-label="Conversations" aria-hidden="true">
-    <div class="sidebar-header">
-      <span class="sidebar-title">Conversations</span>
-      <button id="new-conversation-btn" class="new-conv-btn" aria-label="Start new conversation" title="New conversation">&#43;</button>
-    </div>
-    <div class="sidebar-search-wrap">
-      <input
-        id="sidebar-search-input"
-        type="search"
-        class="sidebar-search-input"
-        placeholder="Search..."
-        aria-label="Search conversations"
-      />
-    </div>
-    <div id="sidebar-sessions" class="sidebar-sessions" role="list" aria-label="Conversation list">
-      <!-- Populated by OB-1520 -->
-    </div>
-  </nav>
-
-  <div class="chat-wrap">
-    <header class="header">
-      <button
-        id="sidebar-toggle"
-        class="sidebar-toggle-btn"
-        aria-label="Open sidebar"
-        aria-expanded="false"
-        aria-controls="sidebar"
-      >&#9776;</button>
-      <h1>OpenBridge WebChat</h1>
-      <div id="public-url-bar" class="hidden" role="note" aria-label="Public URL">
-        <span id="public-url-text"></span>
-        <button class="url-copy-btn" id="url-copy-btn" aria-label="Copy public URL">Copy</button>
+    <!-- Sidebar panel -->
+    <nav id="sidebar" class="sidebar" aria-label="Conversations" aria-hidden="true">
+      <div class="sidebar-header">
+        <span class="sidebar-title">Conversations</span>
+        <button
+          id="new-conversation-btn"
+          class="new-conv-btn"
+          aria-label="Start new conversation"
+          title="New conversation"
+        >
+          &#43;
+        </button>
       </div>
-      <div style="display:flex;align-items:center;gap:12px">
-        <button class="theme-toggle" id="ts-toggle" aria-label="Toggle message timestamps">Hide times</button>
-        <button class="theme-toggle sound-toggle" id="sound-toggle" aria-label="Mute notifications" aria-pressed="false">&#x1F50A;</button>
-        <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode">Dark</button>
-        <button class="theme-toggle" id="share-btn" aria-label="Share this link">Share</button>
-        <button class="stop-all-btn" id="stop-all-btn" disabled aria-label="Stop all workers">Stop All</button>
-        <button class="settings-gear-btn" id="settings-btn" aria-label="Open settings" aria-controls="settings-panel" aria-expanded="false" title="Settings">&#x2699;&#xFE0F;</button>
-        <div class="conn-status" role="status" aria-live="polite" aria-label="Connection status">
-          <div class="conn-dot" id="dot" aria-hidden="true"></div>
-          <span id="connLabel">Connecting...</span>
-        </div>
+      <div class="sidebar-search-wrap">
+        <input
+          id="sidebar-search-input"
+          type="search"
+          class="sidebar-search-input"
+          placeholder="Search..."
+          aria-label="Search conversations"
+        />
       </div>
-    </header>
-    <section id="dash" class="hidden" aria-label="Agent Status">
       <div
-        class="dash-hdr"
-        id="dash-hdr"
-        role="button"
-        tabindex="0"
-        aria-expanded="true"
-        aria-controls="dash-body"
+        id="sidebar-sessions"
+        class="sidebar-sessions"
+        role="list"
+        aria-label="Conversation list"
       >
-        <span id="dash-lbl">Agent Status</span>
-        <span id="dash-icon" aria-hidden="true">&#9650;</span>
+        <!-- Populated by OB-1520 -->
       </div>
-      <div id="dash-body">
-        <div id="dash-master"></div>
-        <div id="dash-workers"></div>
-        <div id="dash-cost"></div>
-      </div>
-    </section>
-    <main id="msgs" role="log" aria-live="polite" aria-label="Chat messages"></main>
-    <div id="status-bar" class="hidden" role="status" aria-live="polite">
-      <span id="status-text"></span>
-      <span id="status-timer"></span>
-    </div>
-    <div id="deep-mode-bar" class="deep-mode-bar hidden" role="status" aria-live="polite" aria-label="Deep Mode progress">
-      <div class="dm-track"></div>
-    </div>
-    <footer class="input-row">
-      <div id="file-preview" class="file-preview hidden" role="status" aria-live="polite" aria-label="Selected files"></div>
-      <form id="form">
-        <div class="inp-wrap">
-          <textarea
-            id="inp"
-            placeholder="Type a message..."
-            autocomplete="off"
-            disabled
-            rows="1"
-            aria-label="Message input"
-          ></textarea>
-          <div id="char-count" class="char-count hidden" aria-live="polite"></div>
+    </nav>
+
+    <div class="chat-wrap">
+      <header class="header">
+        <button
+          id="sidebar-toggle"
+          class="sidebar-toggle-btn"
+          aria-label="Open sidebar"
+          aria-expanded="false"
+          aria-controls="sidebar"
+        >
+          &#9776;
+        </button>
+        <h1>OpenBridge WebChat</h1>
+        <div id="public-url-bar" class="hidden" role="note" aria-label="Public URL">
+          <span id="public-url-text"></span>
+          <button class="url-copy-btn" id="url-copy-btn" aria-label="Copy public URL">Copy</button>
         </div>
-        <input type="file" id="file-input" class="file-input-hidden" aria-label="Attach file" multiple />
-        <button type="button" id="upload-btn" class="upload-btn" aria-label="Attach file" title="Attach file" disabled>&#128206;</button>
-        <button type="button" id="mic-btn" class="mic-btn" aria-label="Record voice message" title="Record voice message" disabled>&#127908;</button>
-        <button type="submit" id="send" disabled aria-label="Send message">Send</button>
-      </form>
-    </footer>
-  </div>
-  <div id="share-toast" class="share-toast" role="status" aria-live="polite" aria-atomic="true">Link copied!</div>
-  <div id="pwa-banner" class="pwa-banner hidden" role="complementary" aria-label="Install app">
-    <div class="pwa-banner-content">
-      <span class="pwa-banner-icon" aria-hidden="true">&#x1F4F2;</span>
-      <div class="pwa-banner-text">
-        <strong>Add to Home Screen</strong>
-        <span id="pwa-banner-hint">Tap "Add" to install OpenBridge as an app</span>
-      </div>
-      <button id="pwa-install-btn" class="pwa-install-btn">Add</button>
-      <button id="pwa-dismiss-btn" class="pwa-dismiss-btn" aria-label="Dismiss install prompt">&#x2715;</button>
-    </div>
-  </div>
-  <!-- Settings overlay (backdrop) -->
-  <div id="settings-overlay" class="settings-overlay" aria-hidden="true"></div>
-
-  <!-- Settings panel (slide-out, right) -->
-  <aside
-    id="settings-panel"
-    class="settings-panel"
-    role="dialog"
-    aria-modal="true"
-    aria-label="Settings"
-    aria-hidden="true"
-  >
-    <div class="settings-header">
-      <span class="settings-title">Settings</span>
-      <button class="settings-close-btn" aria-label="Close settings">&#x2715;</button>
-    </div>
-    <div class="settings-body">
-      <!-- AI Tool Selector -->
-      <section class="settings-section" aria-labelledby="settings-tool-label">
-        <label id="settings-tool-label" class="settings-label" for="settings-tool-select">AI Tool</label>
-        <select id="settings-tool-select" class="settings-select" aria-label="Preferred AI tool">
-          <option value="">Auto (discovered)</option>
-        </select>
-        <p class="settings-hint">Preferred AI tool for this session. Auto uses the best available.</p>
-      </section>
-
-      <!-- Execution Profile -->
-      <section class="settings-section" aria-labelledby="settings-profile-label">
-        <span id="settings-profile-label" class="settings-label">Execution Profile</span>
-        <div class="settings-radio-group" role="radiogroup" aria-labelledby="settings-profile-label">
-          <label class="settings-radio-item">
-            <input type="radio" name="settings-profile" value="fast" />
-            <span class="settings-radio-content">
-              <span class="settings-radio-title">Fast</span>
-              <span class="settings-radio-desc">Quick responses, fewer subtasks</span>
-            </span>
-          </label>
-          <label class="settings-radio-item">
-            <input type="radio" name="settings-profile" value="thorough" />
-            <span class="settings-radio-content">
-              <span class="settings-radio-title">Thorough</span>
-              <span class="settings-radio-desc">More analysis, multiple subtasks</span>
-            </span>
-          </label>
-          <label class="settings-radio-item">
-            <input type="radio" name="settings-profile" value="manual" />
-            <span class="settings-radio-content">
-              <span class="settings-radio-title">Manual</span>
-              <span class="settings-radio-desc">Confirm before each worker runs</span>
-            </span>
-          </label>
-        </div>
-      </section>
-
-      <!-- Notifications -->
-      <section class="settings-section" aria-labelledby="settings-notif-label">
-        <span id="settings-notif-label" class="settings-label">Notifications</span>
-        <label class="settings-checkbox-item">
-          <input type="checkbox" id="settings-sound-check" />
-          <span class="settings-checkbox-content">
-            <span class="settings-checkbox-title">Sound</span>
-            <span class="settings-checkbox-desc">Play a tone when AI responds</span>
-          </span>
-        </label>
-        <label class="settings-checkbox-item">
-          <input type="checkbox" id="settings-browser-notify-check" />
-          <span class="settings-checkbox-content">
-            <span class="settings-checkbox-title">Browser notifications</span>
-            <span class="settings-checkbox-desc">Show a notification when the tab is in background</span>
-          </span>
-        </label>
-      </section>
-
-      <!-- Theme -->
-      <section class="settings-section" aria-labelledby="settings-theme-label">
-        <label id="settings-theme-label" class="settings-label" for="settings-theme-select">Theme</label>
-        <select id="settings-theme-select" class="settings-select" aria-label="Color theme">
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-        </select>
-      </section>
-
-      <!-- MCP Servers -->
-      <section class="settings-section" aria-labelledby="settings-mcp-label">
-        <div class="settings-mcp-header">
-          <span id="settings-mcp-label" class="settings-label">MCP Servers</span>
-          <button id="mcp-add-btn" class="mcp-add-btn" aria-label="Add MCP server">+ Add</button>
-        </div>
-        <div id="mcp-add-form" style="display:none;" class="mcp-add-form">
-          <input id="mcp-new-name" class="settings-input" type="text" placeholder="Server name (e.g. gmail)" aria-label="MCP server name" />
-          <input id="mcp-new-command" class="settings-input" type="text" placeholder="Command (e.g. mcp-server-gmail)" aria-label="MCP server command" />
-          <div class="mcp-form-actions">
-            <button id="mcp-add-submit" class="mcp-btn-primary">Add</button>
-            <button id="mcp-add-cancel" class="mcp-btn-secondary">Cancel</button>
+        <div style="display: flex; align-items: center; gap: 12px">
+          <button class="theme-toggle" id="ts-toggle" aria-label="Toggle message timestamps">
+            Hide times
+          </button>
+          <button
+            class="theme-toggle sound-toggle"
+            id="sound-toggle"
+            aria-label="Mute notifications"
+            aria-pressed="false"
+          >
+            &#x1F50A;
+          </button>
+          <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode">Dark</button>
+          <button class="theme-toggle" id="share-btn" aria-label="Share this link">Share</button>
+          <button class="stop-all-btn" id="stop-all-btn" disabled aria-label="Stop all workers">
+            Stop All
+          </button>
+          <button
+            class="settings-gear-btn"
+            id="settings-btn"
+            aria-label="Open settings"
+            aria-controls="settings-panel"
+            aria-expanded="false"
+            title="Settings"
+          >
+            &#x2699;&#xFE0F;
+          </button>
+          <div class="conn-status" role="status" aria-live="polite" aria-label="Connection status">
+            <div class="conn-dot" id="dot" aria-hidden="true"></div>
+            <span id="connLabel">Connecting...</span>
           </div>
         </div>
-        <div id="mcp-server-list" class="mcp-server-list">
-          <p class="settings-hint">Loading...</p>
+      </header>
+      <section id="dash" class="hidden" aria-label="Agent Status">
+        <div
+          class="dash-hdr"
+          id="dash-hdr"
+          role="button"
+          tabindex="0"
+          aria-expanded="true"
+          aria-controls="dash-body"
+        >
+          <span id="dash-lbl">Agent Status</span>
+          <span id="dash-icon" aria-hidden="true">&#9650;</span>
+        </div>
+        <div id="dash-body">
+          <div id="dash-master"></div>
+          <div id="dash-workers"></div>
+          <div id="dash-cost"></div>
         </div>
       </section>
+      <main id="msgs" role="log" aria-live="polite" aria-label="Chat messages"></main>
+      <div id="status-bar" class="hidden" role="status" aria-live="polite">
+        <span id="status-text"></span>
+        <span id="status-timer"></span>
+      </div>
+      <div
+        id="deep-mode-bar"
+        class="deep-mode-bar hidden"
+        role="status"
+        aria-live="polite"
+        aria-label="Deep Mode progress"
+      >
+        <div class="dm-track"></div>
+      </div>
+      <footer class="input-row">
+        <div
+          id="file-preview"
+          class="file-preview hidden"
+          role="status"
+          aria-live="polite"
+          aria-label="Selected files"
+        ></div>
+        <form id="form">
+          <div class="inp-wrap">
+            <textarea
+              id="inp"
+              placeholder="Type a message..."
+              autocomplete="off"
+              disabled
+              rows="1"
+              aria-label="Message input"
+            ></textarea>
+            <div id="char-count" class="char-count hidden" aria-live="polite"></div>
+          </div>
+          <input
+            type="file"
+            id="file-input"
+            class="file-input-hidden"
+            aria-label="Attach file"
+            multiple
+          />
+          <button
+            type="button"
+            id="upload-btn"
+            class="upload-btn"
+            aria-label="Attach file"
+            title="Attach file"
+            disabled
+          >
+            &#128206;
+          </button>
+          <button
+            type="button"
+            id="mic-btn"
+            class="mic-btn"
+            aria-label="Record voice message"
+            title="Record voice message"
+            disabled
+          >
+            &#127908;
+          </button>
+          <button type="submit" id="send" disabled aria-label="Send message">Send</button>
+        </form>
+      </footer>
     </div>
-  </aside>
+    <div id="share-toast" class="share-toast" role="status" aria-live="polite" aria-atomic="true">
+      Link copied!
+    </div>
+    <div id="pwa-banner" class="pwa-banner hidden" role="complementary" aria-label="Install app">
+      <div class="pwa-banner-content">
+        <span class="pwa-banner-icon" aria-hidden="true">&#x1F4F2;</span>
+        <div class="pwa-banner-text">
+          <strong>Add to Home Screen</strong>
+          <span id="pwa-banner-hint">Tap "Add" to install OpenBridge as an app</span>
+        </div>
+        <button id="pwa-install-btn" class="pwa-install-btn">Add</button>
+        <button id="pwa-dismiss-btn" class="pwa-dismiss-btn" aria-label="Dismiss install prompt">
+          &#x2715;
+        </button>
+      </div>
+    </div>
+    <!-- Settings overlay (backdrop) -->
+    <div id="settings-overlay" class="settings-overlay" aria-hidden="true"></div>
 
-  <script src="js/app.js" type="module"></script>
-</body>
+    <!-- Settings panel (slide-out, right) -->
+    <aside
+      id="settings-panel"
+      class="settings-panel"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Settings"
+      aria-hidden="true"
+    >
+      <div class="settings-header">
+        <span class="settings-title">Settings</span>
+        <button class="settings-close-btn" aria-label="Close settings">&#x2715;</button>
+      </div>
+      <div class="settings-body">
+        <!-- AI Tool Selector -->
+        <section class="settings-section" aria-labelledby="settings-tool-label">
+          <label id="settings-tool-label" class="settings-label" for="settings-tool-select"
+            >AI Tool</label
+          >
+          <select id="settings-tool-select" class="settings-select" aria-label="Preferred AI tool">
+            <option value="">Auto (discovered)</option>
+          </select>
+          <p class="settings-hint">
+            Preferred AI tool for this session. Auto uses the best available.
+          </p>
+        </section>
+
+        <!-- Execution Profile -->
+        <section class="settings-section" aria-labelledby="settings-profile-label">
+          <span id="settings-profile-label" class="settings-label">Execution Profile</span>
+          <div
+            class="settings-radio-group"
+            role="radiogroup"
+            aria-labelledby="settings-profile-label"
+          >
+            <label class="settings-radio-item">
+              <input type="radio" name="settings-profile" value="fast" />
+              <span class="settings-radio-content">
+                <span class="settings-radio-title">Fast</span>
+                <span class="settings-radio-desc">Quick responses, fewer subtasks</span>
+              </span>
+            </label>
+            <label class="settings-radio-item">
+              <input type="radio" name="settings-profile" value="thorough" />
+              <span class="settings-radio-content">
+                <span class="settings-radio-title">Thorough</span>
+                <span class="settings-radio-desc">More analysis, multiple subtasks</span>
+              </span>
+            </label>
+            <label class="settings-radio-item">
+              <input type="radio" name="settings-profile" value="manual" />
+              <span class="settings-radio-content">
+                <span class="settings-radio-title">Manual</span>
+                <span class="settings-radio-desc">Confirm before each worker runs</span>
+              </span>
+            </label>
+          </div>
+        </section>
+
+        <!-- Notifications -->
+        <section class="settings-section" aria-labelledby="settings-notif-label">
+          <span id="settings-notif-label" class="settings-label">Notifications</span>
+          <label class="settings-checkbox-item">
+            <input type="checkbox" id="settings-sound-check" />
+            <span class="settings-checkbox-content">
+              <span class="settings-checkbox-title">Sound</span>
+              <span class="settings-checkbox-desc">Play a tone when AI responds</span>
+            </span>
+          </label>
+          <label class="settings-checkbox-item">
+            <input type="checkbox" id="settings-browser-notify-check" />
+            <span class="settings-checkbox-content">
+              <span class="settings-checkbox-title">Browser notifications</span>
+              <span class="settings-checkbox-desc"
+                >Show a notification when the tab is in background</span
+              >
+            </span>
+          </label>
+        </section>
+
+        <!-- Theme -->
+        <section class="settings-section" aria-labelledby="settings-theme-label">
+          <label id="settings-theme-label" class="settings-label" for="settings-theme-select"
+            >Theme</label
+          >
+          <select id="settings-theme-select" class="settings-select" aria-label="Color theme">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </section>
+
+        <!-- MCP Servers -->
+        <section class="settings-section" aria-labelledby="settings-mcp-label">
+          <div class="settings-mcp-header">
+            <span id="settings-mcp-label" class="settings-label">MCP Servers</span>
+            <button id="mcp-add-btn" class="mcp-add-btn" aria-label="Add MCP server">+ Add</button>
+          </div>
+          <div id="mcp-add-form" style="display: none" class="mcp-add-form">
+            <input
+              id="mcp-new-name"
+              class="settings-input"
+              type="text"
+              placeholder="Server name (e.g. gmail)"
+              aria-label="MCP server name"
+            />
+            <input
+              id="mcp-new-command"
+              class="settings-input"
+              type="text"
+              placeholder="Command (e.g. mcp-server-gmail)"
+              aria-label="MCP server command"
+            />
+            <div class="mcp-form-actions">
+              <button id="mcp-add-submit" class="mcp-btn-primary">Add</button>
+              <button id="mcp-add-cancel" class="mcp-btn-secondary">Cancel</button>
+            </div>
+          </div>
+          <div id="mcp-server-list" class="mcp-server-list">
+            <p class="settings-hint">Loading...</p>
+          </div>
+        </section>
+      </div>
+    </aside>
+
+    <!-- Permission prompt modal (populated dynamically by app.js) -->
+    <div id="permission-container"></div>
+
+    <script src="js/app.js" type="module"></script>
+  </body>
 </html>

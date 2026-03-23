@@ -54,6 +54,8 @@ export class MessageQueue {
    * cycle so that session state is saved before the urgent message is handled.
    */
   private urgentEnqueuedHandler: ((message: InboundMessage) => void) | null = null;
+  /** Called when a message is permanently failed and moved to the dead letter queue. */
+  private deadLetterCallback?: (message: InboundMessage, error: string) => Promise<void>;
 
   constructor(config: Partial<QueueConfig> = {}, metrics?: MetricsCollector) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -86,6 +88,11 @@ export class MessageQueue {
    */
   onUrgentEnqueued(handler: (message: InboundMessage) => void): void {
     this.urgentEnqueuedHandler = handler;
+  }
+
+  /** Register a callback invoked when a message is permanently failed and moved to the dead letter queue. */
+  onDeadLetter(cb: (message: InboundMessage, error: string) => Promise<void>): void {
+    this.deadLetterCallback = cb;
   }
 
   /**
@@ -261,6 +268,12 @@ export class MessageQueue {
         };
         this.dlq.push(deadLetterItem);
         this.metrics?.recordDeadLettered();
+
+        try {
+          await this.deadLetterCallback?.(item.message, deadLetterItem.error);
+        } catch (cbErr) {
+          logger.error({ err: cbErr }, 'onDeadLetter callback failed');
+        }
 
         logger.error(
           { messageId: item.message.id, attempts: item.attempts, dlqSize: this.dlq.length },

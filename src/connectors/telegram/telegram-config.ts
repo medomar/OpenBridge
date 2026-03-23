@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 export const TelegramConfigSchema = z.object({
   /** Telegram bot token from @BotFather */

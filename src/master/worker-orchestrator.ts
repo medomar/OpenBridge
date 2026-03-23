@@ -7,6 +7,7 @@ import {
   classifyError,
   resolveProfile,
   manifestToSpawnOptions,
+  getMaxPromptLength,
 } from '../core/agent-runner.js';
 import type { SpawnOptions, AgentResult } from '../core/agent-runner.js';
 import { classifyTaskType } from './classification-engine.js';
@@ -41,11 +42,19 @@ import type {
 } from '../memory/index.js';
 import type { Router } from '../core/router.js';
 import type { DotFolderManager } from './dotfolder-manager.js';
+import { consentModeToTrustLevel } from '../core/adapter-registry.js';
 import type { AdapterRegistry } from '../core/adapter-registry.js';
+import { SecurityConfigSchema, type WorkspaceTrustLevel } from '../types/config.js';
 import type { KnowledgeRetriever } from '../core/knowledge-retriever.js';
 import { createLogger } from '../core/logger.js';
 
 const logger = createLogger('worker-orchestrator');
+
+/**
+ * Regex matching file-operation keywords that trigger auto-escalation from
+ * `code-edit` to `file-management` profile (OB-1548).
+ */
+export const FILE_OP_KEYWORDS = /\b(delete|remove|rm|rmdir|rename|move|mv|copy|cp|mkdir)\b/i;
 
 // ---------------------------------------------------------------------------
 // Standalone exported interfaces + functions (moved from master-manager.ts)
@@ -145,6 +154,21 @@ export function predictToolRequirements(
 }
 
 /**
+ * Default per-worker cost caps in USD by tool profile (OB-1521).
+ * Applied when no explicit maxCostUsd is provided in the SPAWN marker.
+ * These are tighter than the session-level PROFILE_COST_CAPS — designed to
+ * catch runaway individual workers (e.g. a Codex worker that burned $0.28).
+ */
+const PROFILE_DEFAULT_COST_CAPS: Record<string, number> = {
+  'read-only': 0.05,
+  'data-query': 0.05,
+  'code-audit': 0.05,
+  'code-edit': 0.1,
+  'file-management': 0.1,
+  'full-access': 0.15,
+};
+
+/**
  * Detect tool-access failures in a worker result (OB-1592).
  *
  * Scans both stdout and stderr for the error patterns the Claude CLI emits
@@ -223,6 +247,7 @@ export interface WorkerOrchestratorDeps {
   modelRegistry: ModelRegistry;
   workerRetryDelayMs: number;
   workerMaxFixIterations: number;
+  trustLevel?: WorkspaceTrustLevel;
 
   // Mutable references
   getMemory: () => MemoryManager | null;
@@ -371,6 +396,7 @@ export class WorkerOrchestrator {
       marker?: ParsedSpawnMarker,
     ) => Promise<void>,
     attachments?: InboundMessage['attachments'],
+    taskClass?: string,
   ): Promise<string> {
     // Load custom profiles once for all workers
     const customProfilesRegistry = await this.deps.readProfilesFromStore();
@@ -456,6 +482,18 @@ export class WorkerOrchestrator {
     const stats = this.deps.workerRegistry.getAggregatedStats();
     logger.info(stats, 'Worker batch stats');
 
+    // Record task efficiency metrics for escalation suppression (OB-1572)
+    const memory = this.deps.getMemory();
+    if (memory && taskClass) {
+      memory
+        .recordTaskEfficiency(taskClass, {
+          turnsUsed: stats.totalTurnsUsed ?? 0,
+          workerCount: stats.totalWorkers,
+          durationMs: stats.avgDurationMs * stats.totalWorkers,
+        })
+        .catch((err) => logger.warn({ err, taskClass }, 'Failed to record task efficiency'));
+    }
+
     // Format all results with structured metadata and build the feedback prompt
     const { feedbackPrompt, observations, workerSummaries } = formatWorkerBatch(
       settled,
@@ -465,7 +503,6 @@ export class WorkerOrchestrator {
     );
 
     // Persist extracted observations (fire-and-forget — don't block the response)
-    const memory = this.deps.getMemory();
     if (observations.length > 0 && memory) {
       Promise.all(observations.map((obs) => memory.insertObservation(obs))).catch((err) =>
         logger.warn({ err }, 'Failed to store worker observations'),
@@ -498,6 +535,7 @@ export class WorkerOrchestrator {
       marker?: ParsedSpawnMarker,
     ) => Promise<void>,
     attachments?: InboundMessage['attachments'],
+    taskClass?: string,
   ): AsyncGenerator<string, string> {
     // Load custom profiles once for all workers
     const customProfilesRegistry = await this.deps.readProfilesFromStore();
@@ -571,6 +609,21 @@ export class WorkerOrchestrator {
 
     await this.deps.persistWorkerRegistry();
 
+    // Record task efficiency metrics for escalation suppression (OB-1572)
+    if (taskClass) {
+      const progressStats = this.deps.workerRegistry.getAggregatedStats();
+      const progressMemory = this.deps.getMemory();
+      if (progressMemory) {
+        progressMemory
+          .recordTaskEfficiency(taskClass, {
+            turnsUsed: progressStats.totalTurnsUsed ?? 0,
+            workerCount: progressStats.totalWorkers,
+            durationMs: progressStats.avgDurationMs * progressStats.totalWorkers,
+          })
+          .catch((err) => logger.warn({ err, taskClass }, 'Failed to record task efficiency'));
+      }
+    }
+
     // Format all results and build the feedback prompt
     const { feedbackPrompt, observations, workerSummaries } = formatWorkerBatch(
       finalSettled,
@@ -580,9 +633,9 @@ export class WorkerOrchestrator {
     );
 
     // Persist extracted observations (fire-and-forget — don't block the response)
-    const memory = this.deps.getMemory();
-    if (observations.length > 0 && memory) {
-      Promise.all(observations.map((obs) => memory.insertObservation(obs))).catch((err) =>
+    const memoryForObs = this.deps.getMemory();
+    if (observations.length > 0 && memoryForObs) {
+      Promise.all(observations.map((obs) => memoryForObs.insertObservation(obs))).catch((err) =>
         logger.warn({ err }, 'Failed to store worker observations'),
       );
     }
@@ -621,7 +674,27 @@ export class WorkerOrchestrator {
     grantedTools: string[],
     attachments?: InboundMessage['attachments'],
   ): Promise<void> {
-    const newWorkerId = `${originalWorkerId}-escalated`;
+    // Defense-in-depth: block respawning in sandbox mode (OB-1603, OB-F216)
+    if (this.deps.trustLevel === 'sandbox') {
+      logger.warn('respawnWorkerAfterGrant called in sandbox mode — ignoring');
+      return;
+    }
+
+    // Guard against infinite escalation loops (OB-F214): cap at depth 3.
+    // Check worker ID (the actual accumulator), not profile (which gets cleaned).
+    const escalationDepth = (originalWorkerId.match(/-escalated/g) ?? []).length;
+    if (escalationDepth >= 3) {
+      logger.warn(
+        { workerId: originalWorkerId, profile: originalProfile, escalationDepth },
+        'Max escalation depth reached — not respawning',
+      );
+      return;
+    }
+
+    // Strip any existing `-escalated` chain from worker ID before appending,
+    // so IDs stay `{base}-escalated` instead of growing infinitely (OB-F214).
+    const baseWorkerId = originalWorkerId.replace(/-escalated(-escalated)*$/, '');
+    const newWorkerId = `${baseWorkerId}-escalated`;
 
     // Determine whether the grant is a profile upgrade or individual tool names.
     const profileGrant = grantedTools.find((g) => BuiltInProfileNameSchema.safeParse(g).success);
@@ -640,11 +713,14 @@ export class WorkerOrchestrator {
       // Individual tool grant — merge with the original profile's tool list.
       const baseTools = resolveProfile(originalProfile) ?? [];
       const mergedTools = [...new Set([...baseTools, ...grantedTools])];
-      const upgradedProfileName = `${originalProfile}-escalated`;
+      // Strip any existing `-escalated` suffix chain so profile names stay `{base}-escalated`
+      // regardless of how many re-grants occur (OB-F214).
+      const baseProfile = originalProfile.replace(/-escalated(-escalated)*$/, '');
+      const upgradedProfileName = `${baseProfile}-escalated`;
       customProfiles = {
         [upgradedProfileName]: {
           name: upgradedProfileName,
-          description: `${originalProfile} + escalated access (${grantedTools.join(', ')})`,
+          description: `${baseProfile} + escalated access (${grantedTools.join(', ')})`,
           tools: mergedTools,
         },
       };
@@ -743,7 +819,18 @@ export class WorkerOrchestrator {
   ): Promise<AgentResult> {
     const { body } = marker;
     // profile may be overridden by skill pack selection (OB-1753)
-    let profile = marker.profile;
+    // OB-1600: In trusted mode, force full-access from the start so the /allow
+    // escalation flow is never triggered — workers already have maximum tools.
+    const workerProfile =
+      this.deps.trustLevel === 'trusted' ? 'full-access' : (marker.profile ?? 'read-only');
+    let profile = workerProfile;
+    const baseProfile = workerProfile.replace(/-escalated(-escalated)*$/, '');
+    if (this.deps.trustLevel === 'trusted' && marker.profile !== 'full-access') {
+      logger.debug(
+        { workerId, originalProfile: marker.profile, effectiveProfile: 'full-access' },
+        'Trusted mode — worker profile forced to full-access',
+      );
+    }
 
     // OB-1596: Compute session-level tool grants for this sender.
     // If the user approved tools earlier this session via /allow, auto-apply them
@@ -757,7 +844,7 @@ export class WorkerOrchestrator {
     const expandedSessionGrants = new Set<string>();
     for (const grant of senderSessionGrants) {
       if (BuiltInProfileNameSchema.safeParse(grant).success) {
-        const profileTools = resolveProfile(grant) ?? [];
+        const profileTools = resolveProfile(grant, undefined, this.deps.trustLevel) ?? [];
         profileTools.forEach((t) => expandedSessionGrants.add(t));
       } else {
         expandedSessionGrants.add(grant);
@@ -789,15 +876,42 @@ export class WorkerOrchestrator {
       workerPrompt = `## Referenced Files\n\nThe following files were attached to the user's message and are available for analysis:\n\n${fileLines}\n\n---\n\n${body.prompt}`;
     }
 
+    // OB-1649: Always inject .openbridge/ protection regardless of trust level.
+    const dotfolderProtection =
+      'PROTECTED DIRECTORY: The .openbridge/ directory contains internal state files (memory.md, workspace-map.json, exploration data, prompts). Do NOT delete, move, or overwrite any files inside .openbridge/. You may READ files from .openbridge/ if needed for context, but never modify them.\n\n';
+    workerPrompt = dotfolderProtection + workerPrompt;
+
+    // OB-1588: Inject workspace boundary instruction when trustLevel is 'trusted'.
+    // This must be prepended to the entire prompt (including referenced files) so the
+    // boundary constraint is the first thing the worker sees. Only inject for trusted
+    // mode — standard and sandbox modes rarely get Bash access, so this is primarily
+    // a defense-in-depth for unrestricted bash workers in trusted mode.
+    if (this.deps.trustLevel === 'trusted') {
+      const boundaryInstruction = `WORKSPACE BOUNDARY: You are operating inside ${this.deps.workspacePath}. All file reads, writes, and Bash commands must target files within this directory. Do not access files outside this workspace (no ~/.ssh, no ~/.env, no /etc). If you need system information, use safe commands like 'node --version' or 'which <tool>'.\n\n`;
+      workerPrompt = boundaryInstruction + workerPrompt;
+    }
+
     // Resolve per-worker tool and adapter
     let workerRunner = this.deps.agentRunner;
     let resolvedModel = body.model;
     const requestedTool = body.tool;
     const toolUsed = requestedTool ?? this.deps.masterTool.name;
 
+    // Resolve the sender's trust level from consent mode so adapter selection
+    // honours /trust settings (OB-1501).
+    const senderConsentMode =
+      memory && activeMessage
+        ? await memory
+            .getConsentMode(activeMessage.sender, activeMessage.source)
+            .catch(() => 'always-ask' as const)
+        : ('always-ask' as const);
+    const senderTrustLevel = consentModeToTrustLevel(senderConsentMode);
+
     if (requestedTool && requestedTool !== this.deps.masterTool.name) {
       const tool = this.resolveDiscoveredTool(requestedTool);
-      const toolAdapter = tool ? this.deps.adapterRegistry.get(requestedTool) : undefined;
+      const toolAdapter = tool
+        ? this.deps.adapterRegistry.getForTrustLevel(requestedTool, senderTrustLevel)
+        : undefined;
 
       if (!tool || !toolAdapter) {
         logger.warn(
@@ -806,7 +920,25 @@ export class WorkerOrchestrator {
         );
       } else {
         workerRunner = new AgentRunner(toolAdapter);
-        logger.info({ requestedTool, workerId }, 'Worker using tool-specific adapter');
+        logger.info(
+          { requestedTool, workerId, trustLevel: senderTrustLevel },
+          'Worker using tool-specific adapter',
+        );
+      }
+    } else {
+      // Default tool (master tool) — select adapter based on trust level so that
+      // /trust ask/edit routes to the SDK adapter for per-tool approval.
+      const masterToolName = this.deps.masterTool.name;
+      const trustAdapter = this.deps.adapterRegistry.getForTrustLevel(
+        masterToolName,
+        senderTrustLevel,
+      );
+      if (trustAdapter) {
+        workerRunner = new AgentRunner(trustAdapter);
+        logger.debug(
+          { masterToolName, trustLevel: senderTrustLevel },
+          'Worker using trust-level-selected adapter',
+        );
       }
     }
 
@@ -868,6 +1000,17 @@ export class WorkerOrchestrator {
       profile = selectedPack.toolProfile;
     }
 
+    // OB-1548: Auto-escalate from code-edit to file-management for file operation tasks.
+    // When the worker prompt contains file management keywords and the current profile is
+    // code-edit, escalate to file-management which includes Bash(rm:*), Bash(mv:*), etc.
+    if (profile === 'code-edit' && FILE_OP_KEYWORDS.test(body.prompt)) {
+      logger.debug(
+        { workerId, previousProfile: 'code-edit', newProfile: 'file-management' },
+        'Auto-escalating profile from code-edit to file-management for file operation task',
+      );
+      profile = 'file-management';
+    }
+
     // Adaptive model selection (OB-724): marker override -> learned best model -> heuristics
     if (!resolvedModel && memory) {
       const taskType = classifyTaskType(body.prompt);
@@ -890,6 +1033,15 @@ export class WorkerOrchestrator {
           : this.deps.masterTool.name;
       const modelRegistry = createModelRegistry(providerName);
       resolvedModel = modelRegistry.resolveModelOrTier(resolvedModel);
+    }
+
+    // Default Claude workers to Sonnet tier (OB-1560, OB-F205): when no model is specified
+    // (SPAWN markers often omit model), undefined flows through to getClaudePromptBudget()
+    // which returns 32K Haiku tier instead of 128K Sonnet. Sonnet is the correct default.
+    // Codex/Aider workers keep undefined — they have their own budget logic.
+    if (!resolvedModel && this.deps.masterTool.name === 'claude') {
+      resolvedModel = 'sonnet';
+      logger.debug({ workerId }, 'Worker model defaulted to sonnet (no explicit model)');
     }
 
     // Avoid high-failure-rate models (OB-907): if the resolved model has >50% failure rate
@@ -954,7 +1106,14 @@ export class WorkerOrchestrator {
     // When a mismatch is predicted, request escalation upfront — the user is asked
     // before the worker is spawned, and the actual spawn is deferred to the respawn
     // callback so no turns are wasted on a predictably blocked worker.
-    const toolPrediction = predictToolRequirements(body.prompt, profile);
+    //
+    // Skip pre-flight for already-escalated workers (OB-F214): respawnWorkerAfterGrant
+    // calls back into spawnWorker — running prediction again creates an infinite loop
+    // (escalate → respawn → predict → escalate → ...) that OOMs the process.
+    const alreadyEscalated = workerId.includes('-escalated');
+    const toolPrediction = alreadyEscalated
+      ? undefined
+      : predictToolRequirements(body.prompt, profile);
     if (toolPrediction && router && activeMessage) {
       logger.info(
         {
@@ -969,8 +1128,9 @@ export class WorkerOrchestrator {
       const origMessage = activeMessage;
       const connector = router.getConnector(origMessage.source);
       if (connector) {
-        const suggestedTools = resolveProfile(toolPrediction.suggestedProfile) ?? [];
-        const currentTools = resolveProfile(profile) ?? [];
+        const suggestedTools =
+          resolveProfile(toolPrediction.suggestedProfile, undefined, this.deps.trustLevel) ?? [];
+        const currentTools = resolveProfile(profile, undefined, this.deps.trustLevel) ?? [];
         const additionalTools = suggestedTools.filter((t) => !currentTools.includes(t));
 
         // OB-1596/OB-1600: If session or permanent grants already cover all additional
@@ -985,7 +1145,7 @@ export class WorkerOrchestrator {
               workerId,
               marker,
               index,
-              profile,
+              baseProfile,
               grantedTools,
               attachments,
             );
@@ -1075,9 +1235,36 @@ export class WorkerOrchestrator {
       }
     }
 
+    // OB-1562: Pre-spawn prompt size validation — catch oversized prompts before they reach
+    // the adapter's sanitizePrompt(). This logs the workerId at the decision point, enabling
+    // smarter handling (e.g. prompt splitting) in the future.
+    const maxChars = getMaxPromptLength(resolvedModel);
+    if (workerPrompt.length > maxChars) {
+      const originalLen = workerPrompt.length;
+      workerPrompt = workerPrompt.slice(0, maxChars);
+      logger.warn(
+        { workerId, originalLen, maxChars, truncated: originalLen - maxChars },
+        'Pre-budgeted worker prompt to fit model limit',
+      );
+    }
+
     // NOTE: No sessionId provided here — workers get --print mode (depth limiting)
     // manifestToSpawnOptions is async: when manifest.mcpServers is set, it writes a
     // per-worker temp MCP config file and returns a cleanup callback to delete it.
+    // OB-1521: Apply per-worker cost cap — marker override takes precedence over profile default.
+    const resolvedMaxCostUsd: number | undefined =
+      body.maxCostUsd ?? PROFILE_DEFAULT_COST_CAPS[profile];
+
+    // OB-1623: Scale cost cap 2.5x for Codex workers to match OpenAI's higher per-token pricing.
+    let effectiveMaxCostUsd = resolvedMaxCostUsd;
+    if (effectiveMaxCostUsd && body.tool === 'codex') {
+      effectiveMaxCostUsd = Math.min(effectiveMaxCostUsd * 2.5, 0.25);
+      logger.debug(
+        { profile, originalCap: resolvedMaxCostUsd, scaledCap: effectiveMaxCostUsd },
+        'Codex worker cost cap scaled 2.5x',
+      );
+    }
+
     const { spawnOptions: spawnOpts, cleanup: mcpCleanup } = await manifestToSpawnOptions(
       {
         prompt: workerPrompt,
@@ -1088,6 +1275,7 @@ export class WorkerOrchestrator {
         timeout: body.timeout,
         retries: body.retries,
         maxBudgetUsd: body.maxBudgetUsd,
+        maxCostUsd: effectiveMaxCostUsd,
       },
       customProfiles,
     );
@@ -1095,6 +1283,11 @@ export class WorkerOrchestrator {
     // OB-1791: Apply configurable fix iteration cap to workers.
     // Sourced from config.worker.maxFixIterations (default: 3).
     spawnOpts.maxFixIterations = this.deps.workerMaxFixIterations;
+
+    // OB-1593: Thread trustLevel into securityConfig so agent-runner cost caps scale correctly.
+    spawnOpts.securityConfig = SecurityConfigSchema.parse({
+      trustLevel: this.deps.trustLevel ?? 'standard',
+    });
 
     // OB-1596: Auto-merge session-granted tools into this worker's allowedTools.
     // Tools previously approved by the user this session (via /allow) are applied
@@ -1122,6 +1315,23 @@ export class WorkerOrchestrator {
         logger.debug(
           { workerId, toolsAdded: toolsToAdd },
           'Permanent grants auto-merged into worker allowedTools',
+        );
+      }
+    }
+
+    // Auto-merge skill pack requiredTools into worker allowedTools.
+    // Skill packs declare tools they need (e.g. Bash(sqlite3:*)) that may not be
+    // included in the base profile. Without this merge, the worker would be blocked
+    // by Claude's permission system — and in --print mode with remote users
+    // (WebChat, Telegram, WhatsApp), there is no terminal to approve the prompt.
+    if (selectedPack && selectedPack.requiredTools.length > 0) {
+      const existing = spawnOpts.allowedTools ?? [];
+      const toolsToAdd = selectedPack.requiredTools.filter((t) => !existing.includes(t));
+      if (toolsToAdd.length > 0) {
+        spawnOpts.allowedTools = [...existing, ...toolsToAdd];
+        logger.info(
+          { workerId, toolsAdded: toolsToAdd, skillPack: selectedPack.name },
+          'Skill pack requiredTools merged into worker allowedTools',
         );
       }
     }
@@ -1192,6 +1402,11 @@ export class WorkerOrchestrator {
         logger.warn({ workerId, error: actErr }, 'Failed to record worker activity (starting)');
       }
     }
+
+    // Track whether agent_activity was updated to a terminal state (OB-1517).
+    // Used by the finally block as a safety-net for streaming agents (Codex path)
+    // whose activity could remain 'running' if an intermediate step throws.
+    let activityUpdated = false;
 
     try {
       // Build a streaming progress callback — broadcasts worker-turn-progress events
@@ -1430,7 +1645,7 @@ export class WorkerOrchestrator {
                 workerId,
                 marker,
                 index,
-                profile,
+                baseProfile,
                 grantedTools,
                 attachments,
               );
@@ -1504,6 +1719,7 @@ export class WorkerOrchestrator {
             completed_at: taskRecord.completedAt,
             cost_usd: result.costUsd,
           });
+          activityUpdated = true;
         } catch (actErr) {
           logger.warn({ workerId, error: actErr }, 'Failed to update worker activity (completion)');
         }
@@ -1601,6 +1817,7 @@ export class WorkerOrchestrator {
             status: 'failed',
             completed_at: taskRecord.completedAt,
           });
+          activityUpdated = true;
         } catch (actErr) {
           logger.warn({ workerId, error: actErr }, 'Failed to update worker activity (failed)');
         }
@@ -1621,6 +1838,25 @@ export class WorkerOrchestrator {
       // Always clean up abort handle — ensures no stale handles even on pre-spawn
       // exceptions (escalation timeout, slot wait timeout, spawn error). (OB-F171)
       this.workerAbortHandles.delete(workerId);
+
+      // Safety-net: ensure agent_activity transitions out of 'running' for ALL agent
+      // types (Claude, Codex, Aider). Without this, streaming workers (especially Codex)
+      // can remain stuck as 'running' if an intermediate step throws after the process
+      // completes but before the activity update runs. (OB-1517 / OB-F196)
+      if (!activityUpdated && memory) {
+        try {
+          await memory.updateActivity(workerId, {
+            status: 'failed',
+            completed_at: new Date().toISOString(),
+          });
+          logger.warn(
+            { workerId },
+            'Safety-net: forced agent_activity to failed — normal completion path did not update status',
+          );
+        } catch {
+          // Best-effort — if DB is unavailable, nothing more we can do
+        }
+      }
     }
   }
 

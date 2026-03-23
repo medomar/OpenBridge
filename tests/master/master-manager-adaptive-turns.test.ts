@@ -408,7 +408,7 @@ describe('MasterManager — Adaptive Max-Turns (OB-909)', () => {
 
     it('adds +10 turns when prompt contains "thorough"', async () => {
       // 500-char prompt with "thorough": baseline(15) + promptExtra(1) + longExtra(5) + keywordExtra(10) = 31
-      const prompt = 'Please do a thorough review of ' + 'A'.repeat(470);
+      const prompt = 'Please do a thorough analysis of ' + 'A'.repeat(469);
       const marker = `[SPAWN:code-edit]${JSON.stringify({ prompt, model: 'sonnet' })}[/SPAWN]`;
       setupSingleWorkerMocks(marker);
 

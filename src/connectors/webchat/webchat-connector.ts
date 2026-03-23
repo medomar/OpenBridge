@@ -18,6 +18,8 @@ import type { MCPServer } from '../../types/config.js';
 import { WEBCHAT_HTML, WEBCHAT_LOGIN_HTML, WEBCHAT_SW_JS } from './ui-bundle.js';
 import { getOrCreateAuthToken, hashPassword, verifyPassword } from './webchat-auth.js';
 import { transcribeAudio, TRANSCRIPTION_FALLBACK_MESSAGE } from '../../core/voice-transcriber.js';
+import { processDocument } from '../../intelligence/document-processor.js';
+import { stat } from 'node:fs/promises';
 
 /** Name of the HTTP-only session cookie set after successful token validation */
 const SESSION_COOKIE_NAME = 'ob_session';
@@ -1188,17 +1190,114 @@ export class WebChatConnector implements Connector {
           return;
         }
 
-        if (payload.type === 'message' && typeof payload.content === 'string') {
+        if (
+          payload.type === 'permission-response' &&
+          typeof (payload as Record<string, unknown>)['approved'] === 'boolean'
+        ) {
+          // Permission response from WebChat UI — route as YES/NO text message
+          const approved = (payload as Record<string, unknown>)['approved'] as boolean;
           this.messageCounter++;
           const message: InboundMessage = {
             id: `webchat-${this.messageCounter.toString()}`,
             source: 'webchat',
             sender: socketSender,
-            rawContent: payload.content,
-            content: payload.content,
+            rawContent: approved ? 'YES' : 'NO',
+            content: approved ? 'YES' : 'NO',
             timestamp: new Date(),
           };
           this.emit('message', message);
+        } else if (payload.type === 'message' && typeof payload.content === 'string') {
+          this.messageCounter++;
+
+          // Build attachments from file metadata sent by the client
+          const files = Array.isArray((payload as Record<string, unknown>)['files'])
+            ? ((payload as Record<string, unknown>)['files'] as Array<{
+                filename?: string;
+                path?: string;
+                mimeType?: string;
+                size?: number;
+              }>)
+            : [];
+
+          const buildMessage = async (): Promise<void> => {
+            let attachments: InboundMessage['attachments'];
+            let processedDoc: InboundMessage['processedDocument'];
+
+            if (files.length > 0) {
+              attachments = [];
+              for (const f of files) {
+                if (!f.path) continue;
+                const mime = f.mimeType ?? 'application/octet-stream';
+                const type: 'image' | 'document' | 'audio' | 'video' = mime.startsWith('image/')
+                  ? 'image'
+                  : mime.startsWith('audio/')
+                    ? 'audio'
+                    : mime.startsWith('video/')
+                      ? 'video'
+                      : 'document';
+                let sizeBytes = f.size ?? 0;
+                if (!sizeBytes) {
+                  try {
+                    sizeBytes = (await stat(f.path)).size;
+                  } catch {
+                    /* ignore */
+                  }
+                }
+                attachments.push({
+                  type,
+                  filePath: f.path,
+                  mimeType: mime,
+                  filename: f.filename,
+                  sizeBytes,
+                });
+              }
+
+              // Process the first attachment for document intelligence
+              if (attachments.length > 0) {
+                try {
+                  processedDoc = await processDocument(attachments[0]!.filePath);
+                  logger.debug(
+                    { filePath: attachments[0]!.filePath, docType: processedDoc.docType },
+                    'WebChat file processed',
+                  );
+                } catch (err) {
+                  logger.warn(
+                    { err, filePath: attachments[0]!.filePath },
+                    'Document processing failed for WebChat file',
+                  );
+                }
+              }
+            }
+
+            const content = (payload.content as string) || (attachments?.length ? '[File]' : '');
+            const message: InboundMessage = {
+              id: `webchat-${this.messageCounter.toString()}`,
+              source: 'webchat',
+              sender: socketSender,
+              rawContent: content,
+              content,
+              timestamp: new Date(),
+              attachments,
+            };
+            if (processedDoc !== undefined) {
+              message.processedDocument = processedDoc;
+            }
+            this.emit('message', message);
+          };
+
+          buildMessage().catch((err: Error) => {
+            logger.warn({ err }, 'Failed to process WebChat message with attachments');
+            // Fallback: emit message without attachments
+            const message: InboundMessage = {
+              id: `webchat-${this.messageCounter.toString()}`,
+              source: 'webchat',
+              sender: socketSender,
+              rawContent: payload.content as string,
+              content: payload.content as string,
+              timestamp: new Date(),
+            };
+            this.emit('message', message);
+          });
         } else if (payload.type === 'stop-worker' && typeof payload.workerId === 'string') {
           this.messageCounter++;
           const content = `stop ${payload.workerId}`;
@@ -1307,7 +1406,17 @@ export class WebChatConnector implements Connector {
     }
 
     let payload: string;
-    if (message.media) {
+    if (message.metadata?.['permissionRequest'] === true) {
+      // Permission request — send structured message for WebChat UI modal
+      payload = JSON.stringify({
+        type: 'permission-request',
+        toolName: message.metadata['toolName'] ?? 'Unknown',
+        detail: message.metadata['detail'] ?? '',
+        timeoutMs: message.metadata['timeoutMs'] ?? 60000,
+        permissionId: randomUUID(),
+        timestamp: new Date().toISOString(),
+      });
+    } else if (message.media) {
       const fileId = randomUUID();
       const { data, mimeType, filename } = message.media;
       const timer = setTimeout(

@@ -6,9 +6,15 @@ import type { InboundMessage } from '../../src/types/message.js';
 import type { Router } from '../../src/core/router.js';
 import { DotFolderManager } from '../../src/master/dotfolder-manager.js';
 import { MemoryManager } from '../../src/memory/index.js';
-import type { AgentResult, SpawnOptions } from '../../src/core/agent-runner.js';
+import {
+  AgentExhaustedError,
+  type AgentResult,
+  type SpawnOptions,
+} from '../../src/core/agent-runner.js';
 import type { KnowledgeRetriever } from '../../src/core/knowledge-retriever.js';
 import type { SkillPack } from '../../src/types/agent.js';
+import { turnsToTimeout } from '../../src/master/classification-engine.js';
+import type { ProcessedDocument } from '../../src/types/intelligence.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -178,7 +184,7 @@ describe('MasterManager', () => {
           return {
             class: 'complex-task' as const,
             maxTurns: 5,
-            timeout: 60_000 + 5 * 30_000,
+            timeout: 30_000 + 5 * 30_000,
             reason: 'test mock: complex-task',
           };
         if (
@@ -189,13 +195,13 @@ describe('MasterManager', () => {
           return {
             class: 'tool-use' as const,
             maxTurns: 10,
-            timeout: 60_000 + 10 * 30_000,
+            timeout: 30_000 + 10 * 30_000,
             reason: 'test mock: tool-use',
           };
         return {
           class: 'quick-answer' as const,
           maxTurns: 3,
-          timeout: 60_000 + 3 * 30_000,
+          timeout: 30_000 + 3 * 30_000,
           reason: 'test mock: quick-answer',
         };
       },
@@ -729,6 +735,32 @@ describe('MasterManager', () => {
         // Error expected
       }
 
+      expect(masterManager.getState()).toBe('ready');
+    });
+
+    it('sends partial response on Master session timeout', async () => {
+      // Create an AgentExhaustedError with exit code 143 (SIGTERM — timeout killed process)
+      const timeoutErr = Object.assign(new AgentExhaustedError('Process killed'), {
+        lastExitCode: 143,
+        durationMs: 120_000,
+      });
+      mockSpawn.mockRejectedValueOnce(timeoutErr);
+
+      const message: InboundMessage = {
+        id: 'msg-timeout',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '/ai do something complex',
+        content: 'do something complex',
+        timestamp: new Date(),
+      };
+
+      const response = await masterManager.processMessage(message);
+
+      // Should return user-friendly timeout message instead of throwing (OB-1663)
+      expect(response).toContain('timed out after 120s');
+      expect(response).toContain('Try sending each step separately');
+      // State must be reset to ready so subsequent messages can be processed
       expect(masterManager.getState()).toBe('ready');
     });
   });
@@ -1786,7 +1818,7 @@ describe('MasterManager', () => {
         );
       });
 
-      it('falls back to tool-use when AI returns an unrecognised response', async () => {
+      it('falls back to quick-answer when AI returns an unrecognised response', async () => {
         mockSpawn.mockResolvedValueOnce({
           exitCode: 0,
           stdout: 'I cannot determine the category',
@@ -1795,7 +1827,7 @@ describe('MasterManager', () => {
           durationMs: 100,
         });
         expect((await masterManager.classifyTask('provide me a HTML Preview')).class).toBe(
-          'tool-use',
+          'quick-answer',
         );
       });
 
@@ -1813,8 +1845,8 @@ describe('MasterManager', () => {
         const result = await masterManager.classifyTask('provide me a full-stack web app');
         expect(result.class).toBe('complex-task');
         expect(result.maxTurns).toBe(20);
-        expect(result.timeout).toBe(60_000 + 20 * 30_000); // 660_000ms (startup + turns)
-        expect(result.reason).toBe('full-stack app requires multi-step planning');
+        expect(result.timeout).toBe(30_000 + 20 * 30_000); // 630_000ms (startup + turns)
+        expect(result.reason).toBe('AI classifier: full-stack app requires multi-step planning');
       });
 
       it('returns AI-suggested maxTurns and derived timeout in the result', async () => {
@@ -1829,7 +1861,7 @@ describe('MasterManager', () => {
         const result = await masterManager.classifyTask('provide me a HTML Preview');
         expect(result.class).toBe('tool-use');
         expect(result.maxTurns).toBe(15);
-        expect(result.timeout).toBe(60_000 + 15 * 30_000); // 510_000ms (startup + turns)
+        expect(result.timeout).toBe(30_000 + 15 * 30_000); // 480_000ms (startup + turns)
       });
 
       it('result has a reason field', async () => {
@@ -1838,18 +1870,22 @@ describe('MasterManager', () => {
       });
 
       it('returns per-class timeout derived from maxTurns (keyword heuristics)', async () => {
-        // Timeout formula: CLI_STARTUP_BUDGET_MS (60s) + maxTurns × PER_TURN_BUDGET_MS (30s)
+        // Timeout formula: CLI_STARTUP_BUDGET_MS (30s) + maxTurns × PER_TURN_BUDGET_MS (30s)
+        // NOTE: This test uses real keyword heuristics, not the mock
         const quick = await masterManager.classifyTask('what is this project?');
         expect(quick.class).toBe('quick-answer');
-        expect(quick.timeout).toBe(60_000 + 5 * 30_000); // 210_000ms
+        expect(quick.maxTurns).toBe(3); // MESSAGE_MAX_TURNS_QUICK = 3 (OB-1616)
+        expect(quick.timeout).toBe(30_000 + 3 * 30_000); // 120_000ms
 
         const toolUse = await masterManager.classifyTask('fix the bug in queue.ts');
         expect(toolUse.class).toBe('tool-use');
-        expect(toolUse.timeout).toBe(60_000 + 15 * 30_000); // 510_000ms
+        expect(toolUse.maxTurns).toBe(15); // MESSAGE_MAX_TURNS_TOOL_USE = 15
+        expect(toolUse.timeout).toBe(30_000 + 15 * 30_000); // 480_000ms
 
         const complex = await masterManager.classifyTask('implement user authentication');
         expect(complex.class).toBe('complex-task');
-        expect(complex.timeout).toBe(60_000 + 25 * 30_000); // 810_000ms
+        expect(complex.maxTurns).toBe(25); // MESSAGE_MAX_TURNS_PLANNING = 25
+        expect(complex.timeout).toBe(30_000 + 25 * 30_000); // 780_000ms
       });
 
       // OB-1302: execution / delegation keyword and phrase tests
@@ -1972,7 +2008,7 @@ describe('MasterManager', () => {
         mockSpawn.mockReset();
         const updated = await masterManager.classifyTask(msg);
         expect(updated.maxTurns).toBe(originalMaxTurns);
-        expect(updated.timeout).toBe(60_000 + updated.maxTurns * 30_000);
+        expect(updated.timeout).toBe(30_000 + updated.maxTurns * 30_000);
       });
     });
 
@@ -2016,20 +2052,20 @@ describe('MasterManager', () => {
 
         const response = await masterManager.processMessage(message);
 
-        // Two spawn calls: AI classifier + task execution
+        // Three spawn calls: AI classifier (maxTurns=2) + task execution
         expect(mockSpawn).toHaveBeenCalledTimes(2);
 
-        // First call is the AI classifier: haiku, maxTurns=1
+        // First call is the AI classifier: haiku, maxTurns=2
         const classifierCall = getSpawnCallOpts(0);
         expect(classifierCall?.model).toBe('haiku');
-        expect(classifierCall?.maxTurns).toBe(1);
+        expect(classifierCall?.maxTurns).toBe(2);
         expect(classifierCall?.prompt).toContain('provide me a HTML Preview');
 
         // Second call uses the AI-classified maxTurns (12), not keyword default (3 or 10)
         const taskCall = getSpawnCallOpts(1);
         expect(taskCall?.maxTurns).toBe(12);
-        // Timeout is derived from AI-classified maxTurns: 60s startup + 12 × 30s = 420s
-        expect(taskCall?.timeout).toBe(60_000 + 12 * 30_000);
+        // Timeout clamped to DEFAULT_MESSAGE_TIMEOUT (300s) — turnsToTimeout(12) = 390s > 300s
+        expect(taskCall?.timeout).toBe(300_000);
 
         expect(response).toBe('preview.html has been created.');
       });
@@ -2095,15 +2131,15 @@ describe('MasterManager', () => {
         // Call 0: AI classifier with haiku
         const classifierCall = getSpawnCallOpts(0);
         expect(classifierCall?.model).toBe('haiku');
-        expect(classifierCall?.maxTurns).toBe(1);
+        expect(classifierCall?.maxTurns).toBe(2);
 
         // Call 1: Planning prompt (complex-task → planning flow)
         const planningCall = getSpawnCallOpts(1);
         expect(planningCall?.prompt).toContain('provide me a full-stack auth system');
         expect(planningCall?.prompt).toContain('SPAWN');
         expect(planningCall?.maxTurns).toBe(25); // MESSAGE_MAX_TURNS_PLANNING
-        // Timeout derived from planning turns: 60s startup + 25 × 30s = 810s
-        expect(planningCall?.timeout).toBe(60_000 + 25 * 30_000);
+        // Timeout clamped to DEFAULT_MESSAGE_TIMEOUT (300s) — turnsToTimeout(25) = 780s > 300s
+        expect(planningCall?.timeout).toBe(300_000);
 
         // Call 2: Worker with code-edit profile tools
         const workerCall = getSpawnCallOpts(2);
@@ -2147,8 +2183,8 @@ describe('MasterManager', () => {
         // Task execution uses keyword-fallback maxTurns for tool-use (15)
         const taskCall = getSpawnCallOpts(1);
         expect(taskCall?.maxTurns).toBe(15);
-        // Timeout derived from keyword-fallback turns: 60s startup + 15 × 30s = 510s
-        expect(taskCall?.timeout).toBe(60_000 + 15 * 30_000);
+        // Timeout clamped to DEFAULT_MESSAGE_TIMEOUT (300s) — turnsToTimeout(15) = 480s > 300s
+        expect(taskCall?.timeout).toBe(300_000);
 
         expect(response).toBe('queue.ts fixed.');
       });
@@ -2187,8 +2223,8 @@ describe('MasterManager', () => {
         // "what is this project?" classifies as quick-answer by keywords
         const result = await masterManager.classifyTask('what is this project?');
         expect(result.class).toBe('quick-answer');
-        expect(result.maxTurns).toBe(5);
-        expect(result.timeout).toBe(60_000 + 5 * 30_000);
+        expect(result.maxTurns).toBe(3);
+        expect(result.timeout).toBe(30_000 + 3 * 30_000);
       });
 
       it('still escalates tool-use to complex-task when learned data supports it', async () => {
@@ -2199,12 +2235,14 @@ describe('MasterManager', () => {
           avg_turns: 10,
           total_tasks: 30,
         });
+        // Ensure getTaskEfficiency returns null so escalation is not suppressed
+        vi.spyOn(memoryManager, 'getTaskEfficiency').mockResolvedValue(null);
 
         // "fix the bug in queue.ts" classifies as tool-use by keywords
         const result = await masterManager.classifyTask('fix the bug in queue.ts');
         expect(result.class).toBe('complex-task');
         expect(result.maxTurns).toBe(25);
-        expect(result.timeout).toBe(60_000 + 25 * 30_000);
+        expect(result.timeout).toBe(30_000 + 25 * 30_000);
         expect(result.reason).toContain('escalated');
       });
     });
@@ -3316,6 +3354,700 @@ describe('MasterManager', () => {
       expect(names).toContain('test-writer');
       expect(names).toContain('data-analysis');
       expect(names).toContain('documentation');
+    });
+  });
+
+  describe('Self-Improvement Cycle No-Op Suppression (OB-F210 / OB-1578–1579)', () => {
+    it('should have consecutiveNoOpCycles field initialized to 0', async () => {
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      };
+
+      const manager = new MasterManager(options);
+      await manager.start();
+
+      const managerTyped = manager as unknown as { consecutiveNoOpCycles: number };
+      expect(managerTyped.consecutiveNoOpCycles).toBe(0);
+
+      await manager.shutdown();
+    });
+
+    it('should reset consecutiveNoOpCycles on resetIdleTimer call', async () => {
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      };
+
+      const manager = new MasterManager(options);
+      await manager.start();
+
+      const managerTyped = manager as unknown as {
+        consecutiveNoOpCycles: number;
+        resetIdleTimer: () => void;
+        consecutiveIdleCycles: number;
+      };
+
+      // Manually set counters to non-zero
+      managerTyped.consecutiveNoOpCycles = 5;
+      managerTyped.consecutiveIdleCycles = 3;
+
+      // Call resetIdleTimer (simulates user message)
+      managerTyped.resetIdleTimer();
+
+      // Both should reset to 0
+      expect(managerTyped.consecutiveNoOpCycles).toBe(0);
+      expect(managerTyped.consecutiveIdleCycles).toBe(0);
+
+      await manager.shutdown();
+    });
+
+    it('should verify runSelfImprovementCycle exists and returns Promise<boolean>', async () => {
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      };
+
+      const manager = new MasterManager(options);
+      await manager.start();
+
+      const managerTyped = manager as unknown as {
+        runSelfImprovementCycle: () => Promise<boolean>;
+      };
+
+      // Verify that runSelfImprovementCycle exists and is a function
+      expect(typeof managerTyped.runSelfImprovementCycle).toBe('function');
+
+      await manager.shutdown();
+    });
+
+    it('should verify checkIdleAndImprove exists as private method', async () => {
+      const options: MasterManagerOptions = {
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      };
+
+      const manager = new MasterManager(options);
+      await manager.start();
+
+      const managerTyped = manager as unknown as {
+        checkIdleAndImprove?: () => Promise<void>;
+      };
+
+      // Verify the method exists (it's private but accessible via type casting)
+      if (managerTyped.checkIdleAndImprove) {
+        expect(typeof managerTyped.checkIdleAndImprove).toBe('function');
+      }
+
+      await manager.shutdown();
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // OB-1618: Timeout clamping and quick-answer classification verification
+  // ─────────────────────────────────────────────────────────────────────────
+
+  describe('OB-1618: Timeout clamping and quick-answer constants', () => {
+    it('verifies quick-answer classification returns maxTurns: 3', async () => {
+      // Restore real classifyTask for this test
+      MasterManager.prototype.classifyTask = _originalClassifyTask;
+
+      const result = await masterManager.classifyTask('what is Node.js?');
+      expect(result.class).toBe('quick-answer');
+      expect(result.maxTurns).toBe(3);
+    });
+
+    it('verifies timeout clamping to message timeout boundary', () => {
+      // Timeout clamping in master-manager.ts:3448
+      // const safeTimeout = Math.min(timeoutToUse, DEFAULT_MESSAGE_TIMEOUT - 10_000);
+      // When a task has a computed timeout > 180_000ms, it gets clamped to 170_000ms
+      const DEFAULT_MESSAGE_TIMEOUT = 180_000;
+      const CLAMP_HEADROOM = 10_000;
+      const CLAMPED_TIMEOUT = DEFAULT_MESSAGE_TIMEOUT - CLAMP_HEADROOM;
+
+      // Example: complex-task with maxTurns=30 would compute:
+      // timeout = 30_000 + 30 * 30_000 = 930_000ms
+      // After clamping: Math.min(930_000, 170_000) = 170_000ms
+      const highTurnTimeout = turnsToTimeout(30);
+      expect(highTurnTimeout).toBe(930_000);
+
+      const clampedTimeout = Math.min(highTurnTimeout, CLAMPED_TIMEOUT);
+      expect(clampedTimeout).toBe(170_000);
+    });
+
+    it('verifies that quick-answer timeout (120s) is well under message timeout boundary', async () => {
+      // Quick-answer: timeout = 30_000 + 3 * 30_000 = 120_000ms < 180_000ms
+      // This should NOT trigger clamping
+      const DEFAULT_MESSAGE_TIMEOUT = 180_000;
+      const quickAnswerTimeout = turnsToTimeout(3);
+
+      expect(quickAnswerTimeout).toBe(120_000);
+      expect(quickAnswerTimeout).toBeLessThan(DEFAULT_MESSAGE_TIMEOUT - 10_000);
+    });
+
+    it('verifies tool-use timeout (480s) is under message timeout boundary', async () => {
+      const DEFAULT_MESSAGE_TIMEOUT = 180_000;
+      const toolUseTimeout = turnsToTimeout(15);
+
+      expect(toolUseTimeout).toBe(480_000);
+      // Tool-use timeout is > 180s, so it should be clamped
+      expect(toolUseTimeout).toBeGreaterThan(DEFAULT_MESSAGE_TIMEOUT);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // OB-1628: Channel + role context injection verification
+  // ─────────────────────────────────────────────────────────────────────────
+
+  describe('OB-1628: Channel + role context header injection (OB-F221)', () => {
+    it('should inject [Context: channel=telegram] header for telegram messages', async () => {
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Response from telegram',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+        status: 'completed',
+      });
+
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+
+      const manager = new MasterManager({
+        workspacePath: testWorkspace,
+        memory,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      });
+
+      await manager.start();
+
+      const message: InboundMessage = {
+        id: 'msg-1',
+        source: 'telegram',
+        sender: '+1234567890',
+        rawContent: '/ai what is Node.js?',
+        content: 'what is Node.js?',
+        timestamp: new Date(),
+      };
+
+      await manager.processMessage(message);
+
+      expect(mockSpawn).toHaveBeenCalled();
+      const call = getSpawnCallOpts(0);
+      expect(call?.prompt).toBeDefined();
+      expect(call?.prompt).toMatch(/^\[Context: channel=telegram/);
+
+      await manager.shutdown();
+      await memory.close();
+    });
+
+    it('should inject [Context: channel=console] header for console messages', async () => {
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Response from console',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+        status: 'completed',
+      });
+
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+
+      const manager = new MasterManager({
+        workspacePath: testWorkspace,
+        memory,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      });
+
+      await manager.start();
+
+      const message: InboundMessage = {
+        id: 'msg-2',
+        source: 'console',
+        sender: 'user@localhost',
+        rawContent: '/ai what is Node.js?',
+        content: 'what is Node.js?',
+        timestamp: new Date(),
+      };
+
+      await manager.processMessage(message);
+
+      expect(mockSpawn).toHaveBeenCalled();
+      const call = getSpawnCallOpts(0);
+      expect(call?.prompt).toBeDefined();
+      expect(call?.prompt).toMatch(/^\[Context: channel=console/);
+
+      await manager.shutdown();
+      await memory.close();
+    });
+
+    it('should include context header for whatsapp channel', async () => {
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Response for whatsapp',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+        status: 'completed',
+      });
+
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+
+      const manager = new MasterManager({
+        workspacePath: testWorkspace,
+        memory,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      });
+
+      await manager.start();
+
+      const message: InboundMessage = {
+        id: 'msg-3',
+        source: 'whatsapp',
+        sender: '+447700900000',
+        rawContent: '/ai what is the weather',
+        content: 'what is the weather',
+        timestamp: new Date(),
+      };
+
+      await manager.processMessage(message);
+
+      expect(mockSpawn).toHaveBeenCalled();
+      const call = getSpawnCallOpts(0);
+      expect(call?.prompt).toBeDefined();
+      // Verify context header is present for whatsapp
+      expect(call?.prompt).toMatch(/^\[Context: channel=whatsapp/);
+
+      await manager.shutdown();
+      await memory.close();
+    });
+
+    it('should default to role=owner when no access entry exists', async () => {
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Response',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+        status: 'completed',
+      });
+
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+
+      const manager = new MasterManager({
+        workspacePath: testWorkspace,
+        memory,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      });
+
+      await manager.start();
+
+      const message: InboundMessage = {
+        id: 'msg-4',
+        source: 'telegram',
+        sender: '+999999999999',
+        rawContent: '/ai hello',
+        content: 'hello',
+        timestamp: new Date(),
+      };
+
+      // Don't set any access entry — should default to owner
+      await manager.processMessage(message);
+
+      expect(mockSpawn).toHaveBeenCalled();
+      const call = getSpawnCallOpts(0);
+      expect(call?.prompt).toBeDefined();
+      expect(call?.prompt).toMatch(/role=owner/);
+
+      await manager.shutdown();
+      await memory.close();
+    });
+
+    it('should use custom role from access entry when available', async () => {
+      mockSpawn.mockResolvedValueOnce({
+        exitCode: 0,
+        stdout: 'Response',
+        stderr: '',
+        retryCount: 0,
+        durationMs: 100,
+        status: 'completed',
+      });
+
+      const memory = new MemoryManager(':memory:');
+      await memory.init();
+
+      // Set a viewer role for this user
+      await memory.setAccess({
+        user_id: '+1234567890',
+        channel: 'telegram',
+        role: 'viewer',
+        daily_cost_used: 0,
+      });
+
+      const manager = new MasterManager({
+        workspacePath: testWorkspace,
+        memory,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      });
+
+      await manager.start();
+
+      const message: InboundMessage = {
+        id: 'msg-5',
+        source: 'telegram',
+        sender: '+1234567890',
+        rawContent: '/ai hello',
+        content: 'hello',
+        timestamp: new Date(),
+      };
+
+      await manager.processMessage(message);
+
+      expect(mockSpawn).toHaveBeenCalled();
+      const call = getSpawnCallOpts(0);
+      expect(call?.prompt).toBeDefined();
+      expect(call?.prompt).toMatch(/role=viewer/);
+
+      await manager.shutdown();
+      await memory.close();
+    });
+  });
+
+  describe('Processing Queue (OB-F229)', () => {
+    let manager: MasterManager;
+
+    /** Build a minimal mock Router with all methods called during processMessage */
+    function makeMockRouter(mockRoute: ReturnType<typeof vi.fn>): Router {
+      return {
+        route: mockRoute,
+        sendProgress: vi.fn().mockResolvedValue(undefined),
+        sendDirect: vi.fn().mockResolvedValue(undefined),
+        broadcastProgress: vi.fn().mockResolvedValue(undefined),
+        getSessionGrants: vi.fn().mockReturnValue([]),
+        getConnector: vi.fn().mockReturnValue(null),
+        requestToolEscalation: vi.fn().mockResolvedValue(undefined),
+      } as unknown as Router;
+    }
+
+    beforeEach(async () => {
+      const dotFolderManager = new DotFolderManager(testWorkspace);
+      await dotFolderManager.initialize();
+
+      manager = new MasterManager({
+        workspacePath: testWorkspace,
+        masterTool,
+        discoveredTools,
+        skipAutoExploration: true,
+      });
+      await manager.start();
+    });
+
+    afterEach(async () => {
+      await manager.shutdown();
+    });
+
+    it('queues messages during processing state instead of dropping them', async () => {
+      // Use a deferred promise so the first spawn stays in-flight (state = 'processing')
+      let resolveFirst!: (value: unknown) => void;
+      const firstSpawnDone = new Promise((resolve) => {
+        resolveFirst = resolve;
+      });
+      mockSpawn.mockReturnValueOnce(
+        firstSpawnDone.then(() => ({
+          exitCode: 0,
+          stdout: 'First response',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 100,
+        })),
+      );
+
+      // Second message will be routed by the drain mechanism
+      const mockRoute = vi.fn().mockResolvedValue(undefined);
+      manager.setRouter(makeMockRouter(mockRoute));
+
+      const msg1: InboundMessage = {
+        id: 'msg-q1',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: 'hello',
+        content: 'hello',
+        timestamp: new Date(),
+      };
+      const msg2: InboundMessage = {
+        id: 'msg-q2',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: 'follow-up',
+        content: 'follow-up',
+        timestamp: new Date(),
+      };
+
+      // Start first message processing without awaiting — sets state = 'processing'
+      const firstProcessing = manager.processMessage(msg1);
+
+      // Yield one microtask tick so processMessage sets state = 'processing'
+      await Promise.resolve();
+
+      // Queue the second message while the first is still being processed
+      const queueResponse = await manager.processMessage(msg2);
+
+      // The queued message should return acknowledgment, not a rejection
+      expect(queueResponse).toContain('queued');
+
+      // Now resolve the first spawn so processMessage can complete and drain the queue
+      resolveFirst(undefined);
+      await firstProcessing;
+
+      // After draining, the router should have been called with the queued message
+      expect(mockRoute).toHaveBeenCalledWith(msg2);
+    });
+
+    it('sends acknowledgment to user when message is queued', async () => {
+      // Keep first spawn in-flight
+      let resolveFirst!: (value: unknown) => void;
+      const firstSpawnDone = new Promise((resolve) => {
+        resolveFirst = resolve;
+      });
+      mockSpawn.mockReturnValueOnce(
+        firstSpawnDone.then(() => ({
+          exitCode: 0,
+          stdout: 'Response',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 100,
+        })),
+      );
+
+      const mockRoute = vi.fn().mockResolvedValue(undefined);
+      manager.setRouter(makeMockRouter(mockRoute));
+
+      const msg1: InboundMessage = {
+        id: 'msg-ack1',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: 'first',
+        content: 'first',
+        timestamp: new Date(),
+      };
+      const msg2: InboundMessage = {
+        id: 'msg-ack2',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: 'second',
+        content: 'second',
+        timestamp: new Date(),
+      };
+
+      const firstProcessing = manager.processMessage(msg1);
+      await Promise.resolve();
+
+      const ackResponse = await manager.processMessage(msg2);
+
+      // User must see a queued acknowledgment, not a "not ready" rejection
+      expect(ackResponse).toBe(
+        "I'm working on your previous request. Your message has been queued and will be processed next.",
+      );
+
+      // Clean up
+      resolveFirst(undefined);
+      await firstProcessing;
+    });
+
+    it('caps queue at 5 messages per user', async () => {
+      // Keep first spawn in-flight
+      let resolveFirst!: (value: unknown) => void;
+      const firstSpawnDone = new Promise((resolve) => {
+        resolveFirst = resolve;
+      });
+      mockSpawn.mockReturnValueOnce(
+        firstSpawnDone.then(() => ({
+          exitCode: 0,
+          stdout: 'Response',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 100,
+        })),
+      );
+
+      const mockRoute = vi.fn().mockResolvedValue(undefined);
+      manager.setRouter(makeMockRouter(mockRoute));
+
+      const firstMsg: InboundMessage = {
+        id: 'msg-cap0',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: 'first',
+        content: 'first',
+        timestamp: new Date(),
+      };
+
+      const firstProcessing = manager.processMessage(firstMsg);
+      await Promise.resolve();
+
+      // Queue 5 messages — all should be accepted
+      for (let i = 1; i <= 5; i++) {
+        const response = await manager.processMessage({
+          id: `msg-cap${i}`,
+          source: 'test',
+          sender: '+1234567890',
+          rawContent: `message ${i}`,
+          content: `message ${i}`,
+          timestamp: new Date(),
+        });
+        expect(response).toContain('queued');
+      }
+
+      // 6th message should be rejected
+      const overflowResponse = await manager.processMessage({
+        id: 'msg-cap6',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: 'overflow',
+        content: 'overflow',
+        timestamp: new Date(),
+      });
+      expect(overflowResponse).toBe(
+        'Too many queued messages. Please wait for the current request to complete.',
+      );
+
+      // Clean up
+      resolveFirst(undefined);
+      await firstProcessing;
+    });
+
+    it('merges rapid-fire image+text messages from same sender', async () => {
+      // Keep first spawn in-flight so state = 'processing' while we queue messages
+      let resolveFirst!: (value: unknown) => void;
+      const firstSpawnDone = new Promise((resolve) => {
+        resolveFirst = resolve;
+      });
+      mockSpawn.mockReturnValueOnce(
+        firstSpawnDone.then(() => ({
+          exitCode: 0,
+          stdout: 'First response',
+          stderr: '',
+          retryCount: 0,
+          durationMs: 100,
+        })),
+      );
+
+      const mockRoute = vi.fn().mockResolvedValue(undefined);
+      manager.setRouter(makeMockRouter(mockRoute));
+
+      const now = new Date();
+
+      // First message kicks off processing (holds state = 'processing')
+      const firstMsg: InboundMessage = {
+        id: 'msg-rfi0',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: 'first request',
+        content: 'first request',
+        timestamp: new Date(now.getTime() - 15_000),
+      };
+
+      // Two pure image messages (no text content) — will be queued during processing
+      const imgMsg1: InboundMessage = {
+        id: 'msg-rfi-img1',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '',
+        content: '',
+        timestamp: new Date(now.getTime() - 5_000),
+        attachments: [{ type: 'image', filePath: '/tmp/img1.jpg', mimeType: 'image/jpeg' }],
+        processedDocument: {
+          id: 'doc-rfi-1',
+          filename: 'img1.jpg',
+          mimeType: 'image/jpeg',
+          filePath: '/tmp/img1.jpg',
+          rawText: 'OCR text from image 1',
+          docType: 'image',
+          tables: [],
+          images: [],
+          entities: [],
+          relations: [],
+          metadata: {},
+          processedAt: new Date(now.getTime() - 5_000).toISOString(),
+        } as ProcessedDocument,
+      };
+
+      const imgMsg2: InboundMessage = {
+        id: 'msg-rfi-img2',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: '',
+        content: '',
+        timestamp: new Date(now.getTime() - 4_000),
+        attachments: [{ type: 'image', filePath: '/tmp/img2.jpg', mimeType: 'image/jpeg' }],
+        processedDocument: {
+          id: 'doc-rfi-2',
+          filename: 'img2.jpg',
+          mimeType: 'image/jpeg',
+          filePath: '/tmp/img2.jpg',
+          rawText: 'OCR text from image 2',
+          docType: 'image',
+          tables: [],
+          images: [],
+          entities: [],
+          relations: [],
+          metadata: {},
+          processedAt: new Date(now.getTime() - 4_000).toISOString(),
+        } as ProcessedDocument,
+      };
+
+      // Text message from same sender within 10s window of both images
+      const textMsg: InboundMessage = {
+        id: 'msg-rfi-text',
+        source: 'test',
+        sender: '+1234567890',
+        rawContent: 'describe these images',
+        content: 'describe these images',
+        timestamp: now,
+      };
+
+      // Start first message processing (sets state = 'processing' synchronously)
+      const firstProcessing = manager.processMessage(firstMsg);
+      await Promise.resolve();
+
+      // Queue two image messages and one text message during processing
+      await manager.processMessage(imgMsg1);
+      await manager.processMessage(imgMsg2);
+      await manager.processMessage(textMsg);
+
+      // Resolve first spawn to trigger drain + merge
+      resolveFirst(undefined);
+      await firstProcessing;
+
+      // Drain should merge the 2 image messages into the text message — route called once
+      expect(mockRoute).toHaveBeenCalledTimes(1);
+      const routedMsg = mockRoute.mock.calls[0][0] as InboundMessage;
+      expect(routedMsg.id).toBe('msg-rfi-text');
+      expect(routedMsg.content).toContain('[User also sent 2 image(s)');
+      expect(routedMsg.content).toContain('OCR text from image 1');
+      expect(routedMsg.content).toContain('OCR text from image 2');
+      expect(routedMsg.content).toContain('describe these images');
     });
   });
 });

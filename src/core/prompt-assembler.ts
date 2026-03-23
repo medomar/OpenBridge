@@ -90,7 +90,18 @@ export class PromptAssembler {
       logger.warn({ dropped }, 'Prompt sections dropped — budget exceeded');
     }
 
-    return included.join('\n\n');
+    const result = included.join('\n\n');
+    logger.debug(
+      {
+        assembledChars: result.length,
+        totalBudget,
+        sectionsIncluded: included.length,
+        sectionsTruncated: truncated.length,
+        sectionsDropped: dropped.length,
+      },
+      'Prompt assembled',
+    );
+    return result;
   }
 
   /** Reset all sections (for reuse). */

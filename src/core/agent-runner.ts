@@ -2,7 +2,7 @@ import { spawn as nodeSpawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname } from 'node:path';
+import { dirname, isAbsolute, resolve, sep } from 'node:path';
 import { createLogger } from './logger.js';
 import { DockerSandbox } from './docker-sandbox.js';
 import { sanitizeEnv } from './env-sanitizer.js';
@@ -11,9 +11,11 @@ import type { TaskManifest, ToolProfile } from '../types/agent.js';
 import type { ModelRegistry } from './model-registry.js';
 import type { CLIAdapter, CLISpawnConfig } from './cli-adapter.js';
 import { ClaudeAdapter } from './adapters/claude-adapter.js';
-import type { SandboxConfig, SecurityConfig } from '../types/config.js';
-import { isMaxTurnsExhausted, isRateLimitError } from './error-classifier.js';
+import { getClaudePromptBudget } from './adapters/claude-budget.js';
+import type { SandboxConfig, SecurityConfig, WorkspaceTrustLevel } from '../types/config.js';
+import { classifyError, isMaxTurnsExhausted, isRateLimitError } from './error-classifier.js';
 import { checkProfileCostSpike, estimateCostUsd, getProfileCostCap } from './cost-manager.js';
+import type { MetricsCollector } from './metrics.js';
 export type { ErrorCategory } from './error-classifier.js';
 export {
   MAX_TURNS_PATTERNS,
@@ -34,7 +36,29 @@ export {
 
 const logger = createLogger('agent-runner');
 
-const MAX_PROMPT_LENGTH = 32_768;
+/** Seconds of execution budget allocated per agent turn for timeout derivation. */
+const SECS_PER_TURN = 30;
+
+/**
+ * Returns model-aware max prompt length.
+ * Opus 4.6 / Sonnet 4.6: 128_000 chars (1M token context window).
+ * Haiku 4.5 and all others: 32_768 chars (conservative default).
+ */
+export function getMaxPromptLength(model?: string): number {
+  return getClaudePromptBudget(model).maxPromptChars;
+}
+
+/** Module-level metrics collector — set once by the host (e.g. Bridge) via setAgentRunnerMetrics(). */
+let _promptMetrics: MetricsCollector | null = null;
+
+/**
+ * Wire a MetricsCollector into the agent-runner module so that
+ * `truncatePrompt` can emit prompt-size metrics without requiring
+ * the collector to be threaded through every call site.
+ */
+export function setAgentRunnerMetrics(collector: MetricsCollector | null): void {
+  _promptMetrics = collector;
+}
 
 /**
  * Default max-turns limits to prevent runaway agents.
@@ -247,6 +271,24 @@ export function isValidModel(model: string, registry?: ModelRegistry): boolean {
 /** Read-only tools — safe for exploration and information gathering */
 export const TOOLS_READ_ONLY = ['Read', 'Glob', 'Grep'] as const;
 
+/** Data query tools — read-only data exploration with query commands (no file modifications) */
+export const TOOLS_DATA_QUERY = [
+  'Read',
+  'Glob',
+  'Grep',
+  'Bash(sqlite3:*)',
+  'Bash(python3:*)',
+  'Bash(node:*)',
+  'Bash(jq:*)',
+  'Bash(awk:*)',
+  'Bash(head:*)',
+  'Bash(tail:*)',
+  'Bash(wc:*)',
+  'Bash(sort:*)',
+  'Bash(uniq:*)',
+  'Bash(cut:*)',
+] as const;
+
 /** Code editing tools — for implementation tasks that modify files */
 export const TOOLS_CODE_EDIT = [
   'Read',
@@ -257,10 +299,29 @@ export const TOOLS_CODE_EDIT = [
   'Bash(git:*)',
   'Bash(npm:*)',
   'Bash(npx:*)',
+  'Bash(rm:*)',
+  'Bash(mv:*)',
+  'Bash(cp:*)',
+  'Bash(mkdir:*)',
 ] as const;
 
 /** Full access tools — unrestricted (use sparingly) */
 export const TOOLS_FULL = ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(*)'] as const;
+
+/** File management tools — for moving, copying, or deleting files/directories within the workspace */
+export const TOOLS_FILE_MANAGEMENT = [
+  'Read',
+  'Glob',
+  'Grep',
+  'Write',
+  'Edit',
+  'Bash(rm:*)',
+  'Bash(mv:*)',
+  'Bash(cp:*)',
+  'Bash(mkdir:*)',
+  'Bash(chmod:*)',
+  'Bash(git:*)',
+] as const;
 
 /** Code audit tools — read files and run test/lint/typecheck commands, no file modifications */
 export const TOOLS_CODE_AUDIT = [
@@ -286,7 +347,10 @@ export const TOOLS_CODE_AUDIT = [
 export function resolveProfile(
   profileName: string,
   customProfiles?: Record<string, ToolProfile>,
+  trustLevel?: WorkspaceTrustLevel,
 ): string[] | undefined {
+  if (trustLevel === 'trusted') return [...TOOLS_FULL];
+  if (trustLevel === 'sandbox') return [...TOOLS_READ_ONLY];
   if (customProfiles) {
     const custom = customProfiles[profileName];
     if (custom) return custom.tools;
@@ -304,19 +368,104 @@ export function resolveProfile(
 export function resolveTools(
   profileName: string,
   customProfiles?: Record<string, ToolProfile>,
+  trustLevel?: WorkspaceTrustLevel,
 ): string[] | undefined {
   switch (profileName) {
     case 'read-only':
       return [...TOOLS_READ_ONLY];
+    case 'data-query':
+      return [...TOOLS_DATA_QUERY];
     case 'code-edit':
       return [...TOOLS_CODE_EDIT];
+    case 'file-management':
+      return [...TOOLS_FILE_MANAGEMENT];
     case 'full-access':
       return [...TOOLS_FULL];
     case 'code-audit':
       return [...TOOLS_CODE_AUDIT];
     default:
-      return resolveProfile(profileName, customProfiles);
+      return resolveProfile(profileName, customProfiles, trustLevel);
   }
+}
+
+/**
+ * Check whether a target path is within the given workspace root.
+ *
+ * Both paths are resolved to absolute form before comparison so that relative
+ * paths and `..` components are handled correctly.
+ *
+ * Returns `false` when the resolved target is NOT a descendant of `workspacePath`,
+ * which signals that a destructive operation (`rm`, `mv`) would escape the workspace.
+ *
+ * Exported so callers and unit tests can validate paths independently (OB-1494).
+ */
+export function isPathWithinWorkspace(targetPath: string, workspacePath: string): boolean {
+  const resolvedTarget = isAbsolute(targetPath)
+    ? resolve(targetPath)
+    : resolve(workspacePath, targetPath);
+  const resolvedWorkspace = resolve(workspacePath);
+  // Append sep so '/workspace-extra' does not falsely match '/workspace'
+  const workspaceWithSep = resolvedWorkspace.endsWith(sep)
+    ? resolvedWorkspace
+    : resolvedWorkspace + sep;
+  return resolvedTarget === resolvedWorkspace || resolvedTarget.startsWith(workspaceWithSep);
+}
+
+/**
+ * Command patterns used to extract paths from worker stdout.
+ * 'destructive' entries (rm, mv) are logged at ERROR level.
+ * 'boundary' entries (cat, cp, curl, etc.) are read-only escapes — logged at WARN.
+ */
+const BOUNDARY_CMD_PATTERNS: Array<{
+  cmd: string;
+  re: RegExp;
+  severity: 'destructive' | 'boundary';
+}> = [
+  { cmd: 'rm', re: /\brm\s+(?:-[a-zA-Z]+\s+)*([^\s;|&><"']+)/g, severity: 'destructive' },
+  { cmd: 'mv', re: /\bmv\s+(?:-[a-zA-Z]+\s+)*([^\s;|&><"']+)/g, severity: 'destructive' },
+  { cmd: 'cat', re: /\bcat\s+(?:-[a-zA-Z]+\s+)*([^\s;|&><"']+)/g, severity: 'boundary' },
+  { cmd: 'cp', re: /\bcp\s+(?:-[a-zA-Z]+\s+)*([^\s;|&><"']+)/g, severity: 'boundary' },
+  { cmd: 'scp', re: /\bscp\s+(?:-[a-zA-Z]+\s+)*([^\s;|&><"']+)/g, severity: 'boundary' },
+  { cmd: 'curl', re: /\bcurl\s+[^;|&\n]*?-o\s+([^\s;|&><"']+)/g, severity: 'boundary' },
+  { cmd: 'wget', re: /\bwget\s+[^;|&\n]*?-O\s+([^\s;|&><"']+)/g, severity: 'boundary' },
+  { cmd: 'rsync', re: /\brsync\s+(?:-[a-zA-Z]+\s+)*([^\s;|&><"']+)/g, severity: 'boundary' },
+  { cmd: 'ln', re: /\bln\s+(?:-[a-zA-Z]+\s+)*([^\s;|&><"']+)/g, severity: 'boundary' },
+];
+
+/**
+ * Scan worker stdout for shell commands whose target paths fall outside the configured
+ * `workspacePath`. Covers destructive commands (`rm`, `mv`) and boundary-escaping
+ * read/copy/transfer commands (`cat`, `cp`, `scp`, `curl`, `wget`, `rsync`, `ln`).
+ *
+ * Returns an array of violations with a `severity` field:
+ * - `'destructive'`: rm/mv targeting paths outside workspace (logged at ERROR)
+ * - `'boundary'`: read/copy commands accessing paths outside workspace (logged at WARN)
+ *
+ * This is a best-effort text scan — it cannot replace a real shell parser but catches
+ * the common cases where absolute paths outside the workspace are referenced.
+ *
+ * Exported for unit testing (OB-1494).
+ */
+export function scanDestructiveCommandViolations(
+  stdout: string,
+  workspacePath: string,
+): Array<{ command: string; path: string; severity: 'destructive' | 'boundary' }> {
+  const violations: Array<{ command: string; path: string; severity: 'destructive' | 'boundary' }> =
+    [];
+
+  for (const { cmd, re, severity } of BOUNDARY_CMD_PATTERNS) {
+    // Re-create with global flag to reset lastIndex on each call
+    const globalRe = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g');
+    let match: RegExpExecArray | null;
+    while ((match = globalRe.exec(stdout)) !== null) {
+      const targetPath = match[1];
+      if (targetPath && !isPathWithinWorkspace(targetPath, workspacePath)) {
+        violations.push({ command: cmd, path: targetPath, severity });
+      }
+    }
+  }
+
+  return violations;
 }
 
 /**
@@ -379,6 +528,7 @@ export async function manifestToSpawnOptions(
     retries: manifest.retries,
     retryDelay: manifest.retryDelay,
     maxBudgetUsd: manifest.maxBudgetUsd,
+    maxCostUsd: manifest.maxCostUsd,
     profile: manifest.profile,
   };
 
@@ -434,36 +584,76 @@ export async function manifestToSpawnOptions(
 }
 
 /**
- * Sanitize a user-supplied prompt before passing it to the CLI.
+ * Apply graduated size checks and hard truncation to a prompt.
  *
- * Removes null bytes and ASCII control characters (except tab, newline, and
- * carriage return). Truncates to `maxLength` (default: `MAX_PROMPT_LENGTH`)
- * to prevent resource exhaustion. spawn() is used without shell: true, so
- * shell metacharacters are already safe.
- *
- * Pass the adapter-aware budget via `maxLength` so Master prompts use the
- * correct provider limit instead of the hardcoded 32 K default.
+ * - Logs WARN when the prompt exceeds 80 % of `maxLength` so callers can
+ *   trigger early compaction or investigate prompt bloat.
+ * - Logs WARN (with a "lost" byte count) when the prompt is actually
+ *   truncated (> 100 % of `maxLength`).
+ * - `context` identifies the call site in the log so operators can tell
+ *   whether bloat is coming from exploration, message-processing, or a
+ *   worker spawn.
  */
-export function sanitizePrompt(prompt: string, maxLength: number = MAX_PROMPT_LENGTH): string {
-  // eslint-disable-next-line no-control-regex
-  const cleaned = prompt.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+export function truncatePrompt(
+  prompt: string,
+  maxLength: number = getMaxPromptLength(),
+  context: string = 'unknown',
+): string {
+  const warnThreshold = Math.floor(maxLength * 0.8);
 
-  if (cleaned.length > maxLength) {
-    const bytesLost = cleaned.length - maxLength;
-    const percentLost = Math.round((bytesLost / cleaned.length) * 100);
+  if (prompt.length > maxLength) {
+    const bytesLost = prompt.length - maxLength;
+    const percentLost = Math.round((bytesLost / prompt.length) * 100);
     logger.warn(
       {
-        originalChars: cleaned.length,
+        context,
+        originalChars: prompt.length,
         maxLength,
         bytesLost,
         percentLost,
       },
-      `Prompt truncated: ${bytesLost} chars lost (${percentLost}% of content, limit ${maxLength})`,
+      `[${context}] Prompt truncated: ${bytesLost} chars lost (${percentLost}% of content, limit ${maxLength})`,
     );
-    return cleaned.slice(0, maxLength);
+    _promptMetrics?.recordPromptSize(prompt.length, maxLength, percentLost);
+    return prompt.slice(0, maxLength);
   }
 
-  return cleaned;
+  if (prompt.length > warnThreshold) {
+    const pct = Math.round((prompt.length / maxLength) * 100);
+    logger.warn(
+      {
+        context,
+        promptChars: prompt.length,
+        maxLength,
+        usagePct: pct,
+      },
+      `[${context}] Prompt at ${pct}% of limit (${prompt.length}/${maxLength} chars) — consider early compaction`,
+    );
+  }
+
+  _promptMetrics?.recordPromptSize(prompt.length, maxLength, 0);
+  return prompt;
+}
+
+/**
+ * Sanitize a user-supplied prompt before passing it to the CLI.
+ *
+ * Removes null bytes and ASCII control characters (except tab, newline, and
+ * carriage return). Delegates size checking and truncation to `truncatePrompt`.
+ * spawn() is used without shell: true, so shell metacharacters are already safe.
+ *
+ * Pass the adapter-aware budget via `maxLength` so Master prompts use the
+ * correct provider limit instead of the hardcoded 32 K default.
+ * Pass `context` to identify the call site in truncation warnings.
+ */
+export function sanitizePrompt(
+  prompt: string,
+  maxLength: number = getMaxPromptLength(),
+  context: string = 'unknown',
+): string {
+  // eslint-disable-next-line no-control-regex
+  const cleaned = prompt.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+  return truncatePrompt(cleaned, maxLength, context);
 }
 
 /** Options accepted by AgentRunner.spawn() */
@@ -536,6 +726,14 @@ export interface SpawnOptions {
    */
   workerCostCaps?: Record<string, number>;
   /**
+   * Per-worker cost cap in USD (OB-1521).
+   * When cumulative reported cost exceeds this value during streaming,
+   * the process is killed with SIGTERM and the result is marked costCapped: true.
+   * Takes precedence over profile-based caps from workerCostCaps/PROFILE_COST_CAPS.
+   * Defaults set by worker-orchestrator.ts: read-only=0.05, code-edit=0.10, full-access=0.15.
+   */
+  maxCostUsd?: number;
+  /**
    * Maximum number of lint/test fix iterations before escalating to Master (OB-1789).
    * Each time the worker runs lint/test commands and then attempts a fix, that counts
    * as one iteration. When the cap is reached, the run is aborted with
@@ -593,8 +791,9 @@ export interface AgentResult {
    * - 'completed': agent finished within its turn budget
    * - 'partial': agent hit the max-turns limit before finishing (turnsExhausted: true)
    * - 'fix-cap-reached': agent hit the fix iteration cap (fixCapReached: true)
+   * - 'cost-capped': agent was killed because cumulative cost exceeded maxCostUsd (costCapped: true)
    */
-  status: 'completed' | 'partial' | 'fix-cap-reached';
+  status: 'completed' | 'partial' | 'fix-cap-reached' | 'cost-capped';
   /**
    * Number of lint/test fix iterations detected in worker output (OB-1789).
    * Populated when maxFixIterations is set. Undefined if fix cap tracking is disabled.
@@ -606,6 +805,11 @@ export interface AgentResult {
    * or accept the partial result.
    */
   fixCapReached?: boolean;
+  /**
+   * True when the worker was killed because cumulative cost exceeded maxCostUsd (OB-1522).
+   * The result contains partial output collected before the cap was hit.
+   */
+  costCapped?: boolean;
 }
 
 /** Record of a single execution attempt (used for aggregated error reporting) */
@@ -691,7 +895,7 @@ export function buildArgs(opts: SpawnOptions): string[] {
   // positional argument as the prompt. --allowedTools is variadic (<tools...>)
   // and would consume a trailing prompt as a tool name when no other option
   // follows it (e.g. --append-system-prompt).
-  args.push(sanitizePrompt(opts.prompt));
+  args.push(sanitizePrompt(opts.prompt, getMaxPromptLength(opts.model), 'worker'));
 
   if (opts.allowedTools && opts.allowedTools.length > 0) {
     for (const tool of opts.allowedTools) {
@@ -733,6 +937,7 @@ function execOnce(config: CLISpawnConfig, workspacePath: string, timeout?: numbe
   let stderr = '';
   let timedOut = false;
   let killed = false;
+  let authAborted = false;
   let timeoutTimer: NodeJS.Timeout | undefined;
   let gracePeriodTimer: NodeJS.Timeout | undefined;
 
@@ -782,7 +987,25 @@ function execOnce(config: CLISpawnConfig, workspacePath: string, timeout?: numbe
       });
 
       child.stderr!.on('data', (data: Buffer) => {
-        stderr += data.toString();
+        const chunk = data.toString();
+        stderr += chunk;
+
+        // Early detection for interactive OAuth/authentication URLs
+        const OAUTH_PATTERNS = [
+          /https:\/\/.*authorize\?/i,
+          /https:\/\/.*login\?/i,
+          /https:\/\/.*oauth/i,
+          /Waiting for authorization/i,
+          /Open the following URL/i,
+        ];
+
+        if (OAUTH_PATTERNS.some((p) => p.test(chunk))) {
+          if (!authAborted && !killed) {
+            logger.warn({ pid: child.pid }, 'Worker attempting interactive auth — aborting early');
+            authAborted = true;
+            child.kill('SIGTERM');
+          }
+        }
       });
 
       child.on('close', (code, signal) => {
@@ -813,6 +1036,14 @@ function execOnce(config: CLISpawnConfig, workspacePath: string, timeout?: numbe
             stderr:
               stderr +
               `\nTimeout: process terminated after ${timeout}ms (signal: ${signal ?? 'none'})`,
+            exitCode,
+          });
+        } else if (authAborted && signal === 'SIGTERM') {
+          // Process was terminated due to detected interactive auth attempt
+          const exitCode = 143;
+          resolve({
+            stdout: parsedStdout,
+            stderr: stderr + '\nAuth-required: worker attempted interactive authentication',
             exitCode,
           });
         } else {
@@ -1110,7 +1341,6 @@ export class AgentRunner {
     // Compute exec timeout: use explicit timeout when provided, otherwise derive
     // from maxTurns (30 seconds per turn) so long-running workers are eventually
     // force-killed by the exec call.  Fall back to 5 minutes if neither is set.
-    const SECS_PER_TURN = 30;
     const effectiveTimeout = timeout ?? (maxTurns ? maxTurns * SECS_PER_TURN * 1_000 : 300_000);
 
     logger.debug(
@@ -1177,6 +1407,10 @@ export class AgentRunner {
     let currentConfig = this.adapter.buildSpawnConfig(opts);
     const startTime = Date.now();
     const modelFallbacks: string[] = [];
+    // Derive a bounded timeout when SPAWN markers omit one — prevents workers
+    // from running unbounded (only caught by the 10-30min watchdog otherwise).
+    const effectiveTimeout =
+      opts.timeout ?? (opts.maxTurns ? opts.maxTurns * SECS_PER_TURN * 1_000 : 300_000);
 
     logger.debug(
       {
@@ -1207,19 +1441,20 @@ export class AgentRunner {
       try {
         if (opts.sandbox?.mode === 'docker') {
           // OB-1558: Check Docker availability before attempting sandbox spawn.
-          // If the daemon is unavailable, fall back to direct spawn with a warning
-          // rather than failing silently or throwing an unrecoverable error.
+          // If the daemon is unavailable, fall back to direct spawn.
+          // Note: DockerHealthMonitor logs WARN on Docker unavailability state transitions.
+          // This DEBUG log provides per-spawn visibility without creating log noise. (OB-1666)
           const dockerSandboxCheck = new DockerSandbox();
           const dockerAvailable = await dockerSandboxCheck.isAvailable();
           if (!dockerAvailable) {
-            logger.warn(
+            logger.debug(
               { attempt, workspacePath: opts.workspacePath },
               'Docker unavailable — falling back to direct (unsandboxed) spawn',
             );
             const { promise: execPromise } = execOnce(
               currentConfig,
               opts.workspacePath,
-              opts.timeout,
+              effectiveTimeout,
             );
             lastResult = await execPromise;
           } else {
@@ -1237,7 +1472,7 @@ export class AgentRunner {
           const { promise: execPromise } = execOnce(
             currentConfig,
             opts.workspacePath,
-            opts.timeout,
+            effectiveTimeout,
           );
           lastResult = await execPromise;
         }
@@ -1269,6 +1504,15 @@ export class AgentRunner {
         stderr: lastResult.stderr,
       });
 
+      // Skip remaining retries if the worker timed out — it will time out again
+      if (classifyError(lastResult.stderr, lastResult.exitCode) === 'timeout') {
+        logger.warn(
+          { exitCode: lastResult.exitCode, attempt, model: currentModel },
+          'Timeout exit — skipping remaining retries (retrying would timeout again)',
+        );
+        break;
+      }
+
       // Check for rate-limit / model unavailability — fall back to next model
       if (currentModel && isRateLimitError(lastResult.stderr) && attempt < retries) {
         const nextModel = getNextFallbackModel(currentModel);
@@ -1294,11 +1538,34 @@ export class AgentRunner {
 
     const turnsExhausted = isMaxTurnsExhausted(lastResult.stdout);
 
+    // Workspace safety scan for file-management profile (OB-1494, OB-1587).
+    // Detect commands in worker output that targeted paths outside the workspace.
+    if (opts.profile === 'file-management') {
+      const violations = scanDestructiveCommandViolations(lastResult.stdout, opts.workspacePath);
+      for (const { command, path: violatingPath, severity } of violations) {
+        if (severity === 'destructive') {
+          logger.error(
+            { command, path: violatingPath, workspacePath: opts.workspacePath },
+            `file-management worker used '${command}' on path outside workspace — destructive boundary violation`,
+          );
+        } else {
+          logger.warn(
+            { command, path: violatingPath, workspacePath: opts.workspacePath },
+            `file-management worker used '${command}' on path outside workspace — boundary escape detected`,
+          );
+        }
+      }
+    }
+
     const costUsd = estimateCostUsd(currentModel, Buffer.byteLength(lastResult.stdout, 'utf8'));
 
     // Post-hoc cost cap warning for non-streaming path (OB-F101).
     // Cannot abort after completion — log warning so callers can diagnose spikes.
-    const costCap = getProfileCostCap(opts.profile, opts.workerCostCaps);
+    const costCap = getProfileCostCap(
+      opts.profile,
+      opts.workerCostCaps,
+      opts.securityConfig?.trustLevel,
+    );
     if (costCap !== undefined && costUsd > costCap) {
       logger.warn(
         { cost: costUsd, cap: costCap, profile: opts.profile },
@@ -1408,6 +1675,10 @@ export class AgentRunner {
     let currentConfig = this.adapter.buildSpawnConfig(opts);
     const startTime = Date.now();
     const modelFallbacks: string[] = [];
+    // Derive a bounded timeout when SPAWN markers omit one — prevents workers
+    // from running unbounded (only caught by the 10-30min watchdog otherwise).
+    const effectiveTimeout =
+      opts.timeout ?? (opts.maxTurns ? opts.maxTurns * SECS_PER_TURN * 1_000 : 300_000);
 
     // Mutable reference to the kill function of the currently-running process.
     // Updated on each retry so abort() always terminates the live child.
@@ -1419,7 +1690,7 @@ export class AgentRunner {
 
     // Launch the first execution immediately — this lets us capture its PID
     // synchronously before the async retry loop begins.
-    const firstHandle = execOnce(currentConfig, opts.workspacePath, opts.timeout);
+    const firstHandle = execOnce(currentConfig, opts.workspacePath, effectiveTimeout);
     currentKill = firstHandle.kill;
     const initialPid = firstHandle.pid;
 
@@ -1453,7 +1724,7 @@ export class AgentRunner {
             'Retrying agent after non-zero exit',
           );
           await sleep(retryDelay);
-          currentHandle = execOnce(currentConfig, opts.workspacePath, opts.timeout);
+          currentHandle = execOnce(currentConfig, opts.workspacePath, effectiveTimeout);
           currentKill = currentHandle.kill;
         }
 
@@ -1487,6 +1758,15 @@ export class AgentRunner {
           stderr: lastResult.stderr,
         });
 
+        // Skip remaining retries if the worker timed out — it will time out again
+        if (classifyError(lastResult.stderr, lastResult.exitCode) === 'timeout') {
+          logger.warn(
+            { exitCode: lastResult.exitCode, attempt, model: currentModel },
+            'Timeout exit — skipping remaining retries (retrying would timeout again)',
+          );
+          break;
+        }
+
         // Rate-limit / model unavailability — fall back to next model
         if (currentModel && isRateLimitError(lastResult.stderr) && attempt < retries) {
           const nextModel = getNextFallbackModel(currentModel);
@@ -1511,13 +1791,35 @@ export class AgentRunner {
 
       const turnsExhausted = isMaxTurnsExhausted(lastResult.stdout);
 
+      // Workspace safety scan for file-management profile (OB-1494, OB-1587).
+      if (opts.profile === 'file-management') {
+        const violations = scanDestructiveCommandViolations(lastResult.stdout, opts.workspacePath);
+        for (const { command, path: violatingPath, severity } of violations) {
+          if (severity === 'destructive') {
+            logger.error(
+              { command, path: violatingPath, workspacePath: opts.workspacePath },
+              `file-management worker used '${command}' on path outside workspace — destructive boundary violation`,
+            );
+          } else {
+            logger.warn(
+              { command, path: violatingPath, workspacePath: opts.workspacePath },
+              `file-management worker used '${command}' on path outside workspace — boundary escape detected`,
+            );
+          }
+        }
+      }
+
       const costUsdHandle = estimateCostUsd(
         currentModel,
         Buffer.byteLength(lastResult.stdout, 'utf8'),
       );
 
       // Post-hoc cost cap warning for non-streaming path (OB-F101).
-      const costCapHandle = getProfileCostCap(opts.profile, opts.workerCostCaps);
+      const costCapHandle = getProfileCostCap(
+        opts.profile,
+        opts.workerCostCaps,
+        opts.securityConfig?.trustLevel,
+      );
       if (costCapHandle !== undefined && costUsdHandle > costCapHandle) {
         logger.warn(
           { cost: costUsdHandle, cap: costCapHandle, profile: opts.profile },
@@ -1679,6 +1981,8 @@ export class AgentRunner {
         let spawnError: Error | undefined;
         let costCapExceeded = false;
         let costCapMessage = '';
+        let perWorkerCostCapped = false;
+        let perWorkerCostAtCap = 0;
 
         try {
           // Drain all chunks — accumulate stdout and report turn progress
@@ -1687,9 +1991,32 @@ export class AgentRunner {
             const chunk = iterResult.value;
             stdout += chunk;
 
+            // Per-worker maxCostUsd check (OB-1522 / OB-F195).
+            // Kill the process and return partial output if cumulative cost exceeds the cap.
+            if (opts.maxCostUsd !== undefined) {
+              const currentCostUsd = estimateCostUsd(
+                currentModel,
+                Buffer.byteLength(stdout, 'utf8'),
+              );
+              if (currentCostUsd > opts.maxCostUsd) {
+                logger.warn(
+                  { cost: currentCostUsd, cap: opts.maxCostUsd, profile: opts.profile },
+                  `Per-worker cost cap exceeded: $${currentCostUsd.toFixed(4)} > $${opts.maxCostUsd} — killing worker`,
+                );
+                currentAbort?.();
+                perWorkerCostCapped = true;
+                perWorkerCostAtCap = currentCostUsd;
+                break;
+              }
+            }
+
             // Per-profile cost cap check (OB-F101).
             // Estimate cost from accumulated output; abort early if cap exceeded.
-            const costCap = getProfileCostCap(opts.profile, opts.workerCostCaps);
+            const costCap = getProfileCostCap(
+              opts.profile,
+              opts.workerCostCaps,
+              opts.securityConfig?.trustLevel,
+            );
             if (costCap !== undefined) {
               const currentCostUsd = estimateCostUsd(
                 currentModel,
@@ -1738,6 +2065,41 @@ export class AgentRunner {
         } catch (error) {
           logger.error({ error, attempt }, 'Agent streaming handle error');
           spawnError = error instanceof Error ? error : new Error(String(error));
+        }
+
+        // Per-worker cost cap exceeded (OB-1522) — return partial output, no retry
+        if (perWorkerCostCapped) {
+          const durationMs = Date.now() - startTime;
+          let parsedStdout = stdout;
+          if (currentConfig.parseOutput) {
+            try {
+              parsedStdout = currentConfig.parseOutput(stdout);
+            } catch {
+              /* fall back to raw */
+            }
+          }
+          const result: AgentResult = {
+            stdout: parsedStdout,
+            stderr: `Cost capped: $${perWorkerCostAtCap.toFixed(4)} exceeded maxCostUsd $${opts.maxCostUsd}`,
+            exitCode: 1,
+            durationMs,
+            retryCount: attempt,
+            model: currentModel,
+            modelFallbacks: modelFallbacks.length > 0 ? modelFallbacks : undefined,
+            costUsd: perWorkerCostAtCap,
+            turnsUsed: lastTurnsUsed > 0 ? lastTurnsUsed : undefined,
+            maxTurns: opts.maxTurns,
+            status: 'cost-capped',
+            costCapped: true,
+          };
+          if (opts.logFile) {
+            try {
+              await writeLogFile(opts.logFile, opts, result);
+            } catch {
+              /* ignore */
+            }
+          }
+          return result;
         }
 
         // Cost cap exceeded — abort immediately without retrying
@@ -1872,6 +2234,15 @@ export class AgentRunner {
           stderr: streamResult!.stderr,
         });
 
+        // Skip remaining retries if the worker timed out — it will time out again
+        if (classifyError(streamResult!.stderr, streamResult!.exitCode) === 'timeout') {
+          logger.warn(
+            { exitCode: streamResult!.exitCode, attempt, model: currentModel },
+            'Timeout exit — skipping remaining retries (retrying would timeout again)',
+          );
+          break;
+        }
+
         // Rate-limit / model unavailability — fall back to next model
         if (currentModel && isRateLimitError(streamResult!.stderr) && attempt < retries) {
           const nextModel = getNextFallbackModel(currentModel);
@@ -1940,23 +2311,81 @@ export class AgentRunner {
       let stdout = '';
       let streamResult: { exitCode: number; stderr: string } | undefined;
       let spawnError: Error | undefined;
+      let streamCostCapped = false;
+      let streamCostAtCap = 0;
 
       try {
-        const { chunks } = execOnceStreaming(currentConfig, opts.workspacePath, opts.timeout);
+        const { chunks, abort: streamAbort } = execOnceStreaming(
+          currentConfig,
+          opts.workspacePath,
+          opts.timeout,
+        );
 
         // Drain all chunks — yield each one and accumulate stdout
         let iterResult = await chunks.next();
         while (!iterResult.done) {
           const chunk = iterResult.value;
           stdout += chunk;
+
+          // Per-worker maxCostUsd check (OB-1522 / OB-F195).
+          if (opts.maxCostUsd !== undefined) {
+            const currentCostUsd = estimateCostUsd(currentModel, Buffer.byteLength(stdout, 'utf8'));
+            if (currentCostUsd > opts.maxCostUsd) {
+              logger.warn(
+                { cost: currentCostUsd, cap: opts.maxCostUsd, profile: opts.profile },
+                `Per-worker cost cap exceeded: $${currentCostUsd.toFixed(4)} > $${opts.maxCostUsd} — killing worker`,
+              );
+              streamAbort();
+              streamCostCapped = true;
+              streamCostAtCap = currentCostUsd;
+              break;
+            }
+          }
+
           yield chunk;
           iterResult = await chunks.next();
         }
 
-        streamResult = iterResult.value;
+        if (!streamCostCapped && iterResult.done) {
+          streamResult = iterResult.value;
+        }
       } catch (error) {
         logger.error({ error, attempt }, 'Agent stream error');
         spawnError = error instanceof Error ? error : new Error(String(error));
+      }
+
+      // Per-worker cost cap hit — return partial output, no retry (OB-1522)
+      if (streamCostCapped) {
+        const durationMs = Date.now() - startTime;
+        let parsedStdout = stdout;
+        if (currentConfig.parseOutput) {
+          try {
+            parsedStdout = currentConfig.parseOutput(stdout);
+          } catch {
+            /* fall back to raw */
+          }
+        }
+        const result: AgentResult = {
+          stdout: parsedStdout,
+          stderr: `Cost capped: $${streamCostAtCap.toFixed(4)} exceeded maxCostUsd $${opts.maxCostUsd}`,
+          exitCode: 1,
+          durationMs,
+          retryCount: attempt,
+          model: currentModel,
+          modelFallbacks: modelFallbacks.length > 0 ? modelFallbacks : undefined,
+          costUsd: streamCostAtCap,
+          maxTurns: opts.maxTurns,
+          status: 'cost-capped',
+          costCapped: true,
+        };
+        if (opts.logFile) {
+          try {
+            await writeLogFile(opts.logFile, opts, result);
+          } catch {
+            /* ignore */
+          }
+        }
+        return result;
       }
 
       if (spawnError) {
@@ -2050,6 +2479,15 @@ export class AgentRunner {
         exitCode: streamResult!.exitCode,
         stderr: streamResult!.stderr,
       });
+
+      // Skip remaining retries if the worker timed out — it will time out again
+      if (classifyError(streamResult!.stderr, streamResult!.exitCode) === 'timeout') {
+        logger.warn(
+          { exitCode: streamResult!.exitCode, attempt, model: currentModel },
+          'Timeout exit — skipping remaining retries (retrying would timeout again)',
+        );
+        break;
+      }
 
       // Check for rate-limit / model unavailability — fall back to next model
       if (currentModel && isRateLimitError(streamResult!.stderr) && attempt < retries) {

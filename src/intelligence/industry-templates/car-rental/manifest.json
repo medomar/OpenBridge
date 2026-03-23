@@ -1,0 +1,1003 @@
+{
+  "id": "car-rental",
+  "name": "Car Rental",
+  "description": "Car rental, fleet management, vehicle leasing — fleet tracking, bookings, maintenance scheduling, rental contracts, and insurance management.",
+  "skillPack": "skill-pack.md",
+  "sampleQueries": [
+    "Add a new vehicle: 2024 Toyota Camry, plate ABC-1234, silver, 15000 km",
+    "Show me all available vehicles for this weekend",
+    "Create a booking for John Smith, picking up tomorrow, returning in 3 days",
+    "Which vehicles have maintenance due this month?",
+    "Log maintenance for vehicle ABC-1234: oil change, $85, 20000 km",
+    "Show me all active rental contracts",
+    "Which vehicles have insurance expiring in the next 30 days?",
+    "What's our fleet utilization rate this week?",
+    "Record vehicle return for booking #1042, 350 km driven, no damage",
+    "Generate a damage assessment report for vehicle XYZ-5678"
+  ],
+  "doctypes": [
+    {
+      "doctype": {
+        "name": "vehicle",
+        "label_singular": "Vehicle",
+        "label_plural": "Vehicles",
+        "icon": "car",
+        "table_name": "dt_vehicles",
+        "source": "template"
+      },
+      "fields": [
+        {
+          "name": "make",
+          "label": "Make",
+          "field_type": "text",
+          "required": true,
+          "searchable": true,
+          "sort_order": 0
+        },
+        {
+          "name": "model",
+          "label": "Model",
+          "field_type": "text",
+          "required": true,
+          "searchable": true,
+          "sort_order": 1
+        },
+        {
+          "name": "year",
+          "label": "Year",
+          "field_type": "number",
+          "required": true,
+          "sort_order": 2
+        },
+        {
+          "name": "license_plate",
+          "label": "License Plate",
+          "field_type": "text",
+          "required": true,
+          "searchable": true,
+          "sort_order": 3
+        },
+        {
+          "name": "vin",
+          "label": "VIN",
+          "field_type": "text",
+          "sort_order": 4
+        },
+        {
+          "name": "color",
+          "label": "Color",
+          "field_type": "text",
+          "sort_order": 5
+        },
+        {
+          "name": "category",
+          "label": "Category",
+          "field_type": "select",
+          "required": true,
+          "sort_order": 6,
+          "options": ["economy", "compact", "midsize", "fullsize", "suv", "luxury", "van", "truck"]
+        },
+        {
+          "name": "transmission",
+          "label": "Transmission",
+          "field_type": "select",
+          "sort_order": 7,
+          "options": ["automatic", "manual"]
+        },
+        {
+          "name": "fuel_type",
+          "label": "Fuel Type",
+          "field_type": "select",
+          "sort_order": 8,
+          "options": ["gasoline", "diesel", "hybrid", "electric"]
+        },
+        {
+          "name": "current_mileage",
+          "label": "Current Mileage (km)",
+          "field_type": "number",
+          "required": true,
+          "sort_order": 9
+        },
+        {
+          "name": "daily_rate",
+          "label": "Daily Rate",
+          "field_type": "currency",
+          "required": true,
+          "sort_order": 10
+        },
+        {
+          "name": "insurance_expiry",
+          "label": "Insurance Expiry Date",
+          "field_type": "date",
+          "sort_order": 11
+        },
+        {
+          "name": "insurance_policy",
+          "label": "Insurance Policy Number",
+          "field_type": "text",
+          "sort_order": 12
+        },
+        {
+          "name": "next_service_km",
+          "label": "Next Service At (km)",
+          "field_type": "number",
+          "sort_order": 13
+        },
+        {
+          "name": "image_url",
+          "label": "Photo",
+          "field_type": "image",
+          "sort_order": 14
+        },
+        {
+          "name": "notes",
+          "label": "Notes",
+          "field_type": "longtext",
+          "sort_order": 15
+        }
+      ],
+      "states": [
+        {
+          "name": "available",
+          "label": "Available",
+          "color": "green",
+          "is_initial": true,
+          "sort_order": 0
+        },
+        { "name": "rented", "label": "Rented", "color": "blue", "sort_order": 1 },
+        { "name": "maintenance", "label": "In Maintenance", "color": "orange", "sort_order": 2 },
+        { "name": "reserved", "label": "Reserved", "color": "purple", "sort_order": 3 },
+        {
+          "name": "retired",
+          "label": "Retired",
+          "color": "gray",
+          "is_terminal": true,
+          "sort_order": 4
+        }
+      ],
+      "transitions": [
+        {
+          "from_state": "available",
+          "to_state": "rented",
+          "action_name": "rent_out",
+          "action_label": "Rent Out"
+        },
+        {
+          "from_state": "available",
+          "to_state": "reserved",
+          "action_name": "reserve",
+          "action_label": "Reserve"
+        },
+        {
+          "from_state": "available",
+          "to_state": "maintenance",
+          "action_name": "send_to_maintenance",
+          "action_label": "Send to Maintenance"
+        },
+        {
+          "from_state": "rented",
+          "to_state": "available",
+          "action_name": "return_vehicle",
+          "action_label": "Return Vehicle"
+        },
+        {
+          "from_state": "rented",
+          "to_state": "maintenance",
+          "action_name": "return_for_maintenance",
+          "action_label": "Return for Maintenance"
+        },
+        {
+          "from_state": "reserved",
+          "to_state": "rented",
+          "action_name": "pick_up",
+          "action_label": "Pick Up"
+        },
+        {
+          "from_state": "reserved",
+          "to_state": "available",
+          "action_name": "cancel_reservation",
+          "action_label": "Cancel Reservation"
+        },
+        {
+          "from_state": "maintenance",
+          "to_state": "available",
+          "action_name": "complete_maintenance",
+          "action_label": "Complete Maintenance"
+        },
+        {
+          "from_state": "available",
+          "to_state": "retired",
+          "action_name": "retire",
+          "action_label": "Retire Vehicle"
+        },
+        {
+          "from_state": "maintenance",
+          "to_state": "retired",
+          "action_name": "retire",
+          "action_label": "Retire Vehicle"
+        }
+      ],
+      "hooks": [
+        {
+          "event": "after_insert",
+          "action_type": "send_notification",
+          "action_config": {
+            "message": "New vehicle added: {{year}} {{make}} {{model}} ({{license_plate}}) — ${{daily_rate}}/day"
+          }
+        }
+      ],
+      "relations": []
+    },
+    {
+      "doctype": {
+        "name": "booking",
+        "label_singular": "Booking",
+        "label_plural": "Bookings",
+        "icon": "calendar",
+        "table_name": "dt_bookings",
+        "source": "template"
+      },
+      "fields": [
+        {
+          "name": "customer_name",
+          "label": "Customer Name",
+          "field_type": "text",
+          "required": true,
+          "searchable": true,
+          "sort_order": 0
+        },
+        {
+          "name": "customer_phone",
+          "label": "Customer Phone",
+          "field_type": "phone",
+          "sort_order": 1
+        },
+        {
+          "name": "customer_email",
+          "label": "Customer Email",
+          "field_type": "email",
+          "sort_order": 2
+        },
+        {
+          "name": "customer_license",
+          "label": "Driver License Number",
+          "field_type": "text",
+          "required": true,
+          "sort_order": 3
+        },
+        {
+          "name": "vehicle_id",
+          "label": "Vehicle",
+          "field_type": "link",
+          "required": true,
+          "sort_order": 4,
+          "link_doctype": "vehicle"
+        },
+        {
+          "name": "pickup_date",
+          "label": "Pickup Date",
+          "field_type": "date",
+          "required": true,
+          "sort_order": 5
+        },
+        {
+          "name": "return_date",
+          "label": "Return Date",
+          "field_type": "date",
+          "required": true,
+          "sort_order": 6
+        },
+        {
+          "name": "pickup_location",
+          "label": "Pickup Location",
+          "field_type": "text",
+          "sort_order": 7
+        },
+        {
+          "name": "return_location",
+          "label": "Return Location",
+          "field_type": "text",
+          "sort_order": 8
+        },
+        {
+          "name": "daily_rate",
+          "label": "Daily Rate",
+          "field_type": "currency",
+          "required": true,
+          "sort_order": 9
+        },
+        {
+          "name": "total_days",
+          "label": "Total Days",
+          "field_type": "number",
+          "sort_order": 10,
+          "formula": "return_date - pickup_date",
+          "depends_on": "pickup_date,return_date"
+        },
+        {
+          "name": "total_amount",
+          "label": "Total Amount",
+          "field_type": "currency",
+          "sort_order": 11,
+          "formula": "daily_rate * total_days",
+          "depends_on": "daily_rate,total_days"
+        },
+        {
+          "name": "mileage_out",
+          "label": "Mileage at Pickup",
+          "field_type": "number",
+          "sort_order": 12
+        },
+        {
+          "name": "mileage_in",
+          "label": "Mileage at Return",
+          "field_type": "number",
+          "sort_order": 13
+        },
+        {
+          "name": "fuel_level_out",
+          "label": "Fuel Level at Pickup",
+          "field_type": "select",
+          "sort_order": 14,
+          "options": ["full", "3/4", "1/2", "1/4", "empty"]
+        },
+        {
+          "name": "fuel_level_in",
+          "label": "Fuel Level at Return",
+          "field_type": "select",
+          "sort_order": 15,
+          "options": ["full", "3/4", "1/2", "1/4", "empty"]
+        },
+        {
+          "name": "damage_notes",
+          "label": "Damage Notes",
+          "field_type": "longtext",
+          "sort_order": 16
+        },
+        {
+          "name": "extras",
+          "label": "Extras",
+          "field_type": "multiselect",
+          "sort_order": 17,
+          "options": [
+            "gps",
+            "child-seat",
+            "additional-driver",
+            "insurance-upgrade",
+            "roadside-assistance"
+          ]
+        },
+        {
+          "name": "notes",
+          "label": "Notes",
+          "field_type": "longtext",
+          "sort_order": 18
+        }
+      ],
+      "states": [
+        {
+          "name": "pending",
+          "label": "Pending",
+          "color": "orange",
+          "is_initial": true,
+          "sort_order": 0
+        },
+        { "name": "confirmed", "label": "Confirmed", "color": "blue", "sort_order": 1 },
+        { "name": "active", "label": "Active (Picked Up)", "color": "green", "sort_order": 2 },
+        { "name": "completed", "label": "Completed", "color": "gray", "sort_order": 3 },
+        {
+          "name": "cancelled",
+          "label": "Cancelled",
+          "color": "red",
+          "is_terminal": true,
+          "sort_order": 4
+        }
+      ],
+      "transitions": [
+        {
+          "from_state": "pending",
+          "to_state": "confirmed",
+          "action_name": "confirm",
+          "action_label": "Confirm Booking"
+        },
+        {
+          "from_state": "pending",
+          "to_state": "cancelled",
+          "action_name": "cancel",
+          "action_label": "Cancel Booking"
+        },
+        {
+          "from_state": "confirmed",
+          "to_state": "active",
+          "action_name": "pick_up",
+          "action_label": "Pick Up Vehicle"
+        },
+        {
+          "from_state": "confirmed",
+          "to_state": "cancelled",
+          "action_name": "cancel",
+          "action_label": "Cancel Booking"
+        },
+        {
+          "from_state": "active",
+          "to_state": "completed",
+          "action_name": "return_vehicle",
+          "action_label": "Return Vehicle"
+        }
+      ],
+      "hooks": [
+        {
+          "event": "on_state_change",
+          "action_type": "run_workflow",
+          "action_config": {
+            "condition": "new_state == 'confirmed'",
+            "workflow": "booking-confirmation"
+          }
+        },
+        {
+          "event": "on_state_change",
+          "action_type": "send_notification",
+          "action_config": {
+            "condition": "new_state == 'active'",
+            "message": "Vehicle {{vehicle_id}} picked up by {{customer_name}}. Mileage: {{mileage_out}} km."
+          }
+        }
+      ],
+      "relations": [
+        {
+          "from_doctype": "booking",
+          "to_doctype": "vehicle",
+          "relation_type": "belongs_to",
+          "from_field": "vehicle_id",
+          "to_field": "id",
+          "label": "Rented vehicle"
+        }
+      ]
+    },
+    {
+      "doctype": {
+        "name": "maintenance-log",
+        "label_singular": "Maintenance Log",
+        "label_plural": "Maintenance Logs",
+        "icon": "wrench",
+        "table_name": "dt_maintenance_logs",
+        "source": "template"
+      },
+      "fields": [
+        {
+          "name": "vehicle_id",
+          "label": "Vehicle",
+          "field_type": "link",
+          "required": true,
+          "sort_order": 0,
+          "link_doctype": "vehicle"
+        },
+        {
+          "name": "date",
+          "label": "Service Date",
+          "field_type": "date",
+          "required": true,
+          "searchable": true,
+          "sort_order": 1
+        },
+        {
+          "name": "service_type",
+          "label": "Service Type",
+          "field_type": "select",
+          "required": true,
+          "sort_order": 2,
+          "options": [
+            "oil-change",
+            "tire-rotation",
+            "brake-service",
+            "battery",
+            "ac-service",
+            "full-inspection",
+            "body-repair",
+            "engine-repair",
+            "transmission",
+            "electrical",
+            "other"
+          ]
+        },
+        {
+          "name": "description",
+          "label": "Description",
+          "field_type": "longtext",
+          "required": true,
+          "searchable": true,
+          "sort_order": 3
+        },
+        {
+          "name": "mileage_at_service",
+          "label": "Mileage at Service (km)",
+          "field_type": "number",
+          "sort_order": 4
+        },
+        {
+          "name": "cost",
+          "label": "Cost",
+          "field_type": "currency",
+          "required": true,
+          "sort_order": 5
+        },
+        {
+          "name": "vendor",
+          "label": "Service Vendor",
+          "field_type": "text",
+          "sort_order": 6
+        },
+        {
+          "name": "next_service_km",
+          "label": "Next Service At (km)",
+          "field_type": "number",
+          "sort_order": 7
+        },
+        {
+          "name": "next_service_date",
+          "label": "Next Service Date",
+          "field_type": "date",
+          "sort_order": 8
+        },
+        {
+          "name": "parts_replaced",
+          "label": "Parts Replaced",
+          "field_type": "longtext",
+          "sort_order": 9
+        },
+        {
+          "name": "receipt_image",
+          "label": "Receipt / Invoice",
+          "field_type": "image",
+          "sort_order": 10
+        },
+        {
+          "name": "notes",
+          "label": "Notes",
+          "field_type": "longtext",
+          "sort_order": 11
+        }
+      ],
+      "states": [
+        {
+          "name": "scheduled",
+          "label": "Scheduled",
+          "color": "blue",
+          "is_initial": true,
+          "sort_order": 0
+        },
+        { "name": "in_progress", "label": "In Progress", "color": "orange", "sort_order": 1 },
+        {
+          "name": "completed",
+          "label": "Completed",
+          "color": "green",
+          "is_terminal": true,
+          "sort_order": 2
+        },
+        {
+          "name": "cancelled",
+          "label": "Cancelled",
+          "color": "gray",
+          "is_terminal": true,
+          "sort_order": 3
+        }
+      ],
+      "transitions": [
+        {
+          "from_state": "scheduled",
+          "to_state": "in_progress",
+          "action_name": "start_service",
+          "action_label": "Start Service"
+        },
+        {
+          "from_state": "scheduled",
+          "to_state": "cancelled",
+          "action_name": "cancel",
+          "action_label": "Cancel"
+        },
+        {
+          "from_state": "in_progress",
+          "to_state": "completed",
+          "action_name": "complete",
+          "action_label": "Complete Service"
+        }
+      ],
+      "hooks": [
+        {
+          "event": "on_state_change",
+          "action_type": "send_notification",
+          "action_config": {
+            "condition": "new_state == 'completed'",
+            "message": "Maintenance completed for vehicle {{vehicle_id}}: {{service_type}} — ${{cost}}"
+          }
+        }
+      ],
+      "relations": [
+        {
+          "from_doctype": "maintenance-log",
+          "to_doctype": "vehicle",
+          "relation_type": "belongs_to",
+          "from_field": "vehicle_id",
+          "to_field": "id",
+          "label": "Serviced vehicle"
+        }
+      ]
+    },
+    {
+      "doctype": {
+        "name": "rental-contract",
+        "label_singular": "Rental Contract",
+        "label_plural": "Rental Contracts",
+        "icon": "file-text",
+        "table_name": "dt_rental_contracts",
+        "source": "template"
+      },
+      "fields": [
+        {
+          "name": "contract_number",
+          "label": "Contract Number",
+          "field_type": "text",
+          "required": true,
+          "searchable": true,
+          "sort_order": 0
+        },
+        {
+          "name": "booking_id",
+          "label": "Booking",
+          "field_type": "link",
+          "required": true,
+          "sort_order": 1,
+          "link_doctype": "booking"
+        },
+        {
+          "name": "customer_name",
+          "label": "Customer Name",
+          "field_type": "text",
+          "required": true,
+          "searchable": true,
+          "sort_order": 2
+        },
+        {
+          "name": "customer_license",
+          "label": "Driver License Number",
+          "field_type": "text",
+          "required": true,
+          "sort_order": 3
+        },
+        {
+          "name": "vehicle_id",
+          "label": "Vehicle",
+          "field_type": "link",
+          "required": true,
+          "sort_order": 4,
+          "link_doctype": "vehicle"
+        },
+        {
+          "name": "start_date",
+          "label": "Start Date",
+          "field_type": "date",
+          "required": true,
+          "sort_order": 5
+        },
+        {
+          "name": "end_date",
+          "label": "End Date",
+          "field_type": "date",
+          "required": true,
+          "sort_order": 6
+        },
+        {
+          "name": "daily_rate",
+          "label": "Daily Rate",
+          "field_type": "currency",
+          "required": true,
+          "sort_order": 7
+        },
+        {
+          "name": "deposit_amount",
+          "label": "Security Deposit",
+          "field_type": "currency",
+          "sort_order": 8
+        },
+        {
+          "name": "insurance_type",
+          "label": "Insurance Type",
+          "field_type": "select",
+          "required": true,
+          "sort_order": 9,
+          "options": ["basic", "standard", "premium", "full-coverage"]
+        },
+        {
+          "name": "mileage_limit",
+          "label": "Daily Mileage Limit (km)",
+          "field_type": "number",
+          "sort_order": 10
+        },
+        {
+          "name": "excess_mileage_rate",
+          "label": "Excess Mileage Rate (per km)",
+          "field_type": "currency",
+          "sort_order": 11
+        },
+        {
+          "name": "total_amount",
+          "label": "Total Contract Amount",
+          "field_type": "currency",
+          "required": true,
+          "sort_order": 12
+        },
+        {
+          "name": "payment_status",
+          "label": "Payment Status",
+          "field_type": "select",
+          "sort_order": 13,
+          "options": ["unpaid", "partial", "paid", "refunded"]
+        },
+        {
+          "name": "terms_accepted",
+          "label": "Terms Accepted",
+          "field_type": "checkbox",
+          "required": true,
+          "sort_order": 14
+        },
+        {
+          "name": "notes",
+          "label": "Notes",
+          "field_type": "longtext",
+          "sort_order": 15
+        }
+      ],
+      "states": [
+        {
+          "name": "draft",
+          "label": "Draft",
+          "color": "gray",
+          "is_initial": true,
+          "sort_order": 0
+        },
+        { "name": "active", "label": "Active", "color": "green", "sort_order": 1 },
+        { "name": "completed", "label": "Completed", "color": "blue", "sort_order": 2 },
+        { "name": "disputed", "label": "Disputed", "color": "red", "sort_order": 3 },
+        {
+          "name": "closed",
+          "label": "Closed",
+          "color": "gray",
+          "is_terminal": true,
+          "sort_order": 4
+        }
+      ],
+      "transitions": [
+        {
+          "from_state": "draft",
+          "to_state": "active",
+          "action_name": "activate",
+          "action_label": "Activate Contract"
+        },
+        {
+          "from_state": "active",
+          "to_state": "completed",
+          "action_name": "complete",
+          "action_label": "Complete Contract"
+        },
+        {
+          "from_state": "active",
+          "to_state": "disputed",
+          "action_name": "dispute",
+          "action_label": "Flag Dispute"
+        },
+        {
+          "from_state": "completed",
+          "to_state": "disputed",
+          "action_name": "dispute",
+          "action_label": "Flag Dispute"
+        },
+        {
+          "from_state": "completed",
+          "to_state": "closed",
+          "action_name": "close",
+          "action_label": "Close Contract"
+        },
+        {
+          "from_state": "disputed",
+          "to_state": "closed",
+          "action_name": "resolve",
+          "action_label": "Resolve & Close"
+        }
+      ],
+      "hooks": [
+        {
+          "event": "after_insert",
+          "action_type": "send_notification",
+          "action_config": {
+            "message": "New rental contract {{contract_number}} created for {{customer_name}} — Vehicle {{vehicle_id}}, ${{total_amount}}"
+          }
+        }
+      ],
+      "relations": [
+        {
+          "from_doctype": "rental-contract",
+          "to_doctype": "booking",
+          "relation_type": "belongs_to",
+          "from_field": "booking_id",
+          "to_field": "id",
+          "label": "For booking"
+        },
+        {
+          "from_doctype": "rental-contract",
+          "to_doctype": "vehicle",
+          "relation_type": "belongs_to",
+          "from_field": "vehicle_id",
+          "to_field": "id",
+          "label": "Rented vehicle"
+        }
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "name": "Maintenance Due Alert",
+      "description": "Checks vehicles daily and sends an alert for any vehicles approaching their next service mileage or with overdue maintenance dates.",
+      "trigger": {
+        "type": "schedule",
+        "cron": "0 7 * * *"
+      },
+      "steps": [
+        {
+          "id": "query-due-mileage",
+          "name": "Find vehicles near service mileage",
+          "type": "query",
+          "config": {
+            "doctype": "vehicle",
+            "filter": "current_mileage >= (next_service_km - 500) AND status != 'retired'",
+            "fields": ["make", "model", "license_plate", "current_mileage", "next_service_km"]
+          },
+          "sort_order": 0
+        },
+        {
+          "id": "check-has-vehicles",
+          "name": "Check if any vehicles need service",
+          "type": "condition",
+          "config": {
+            "expression": "results.length > 0",
+            "on_false": "skip_remaining"
+          },
+          "sort_order": 1
+        },
+        {
+          "id": "format-alert",
+          "name": "Format maintenance alert",
+          "type": "transform",
+          "config": {
+            "template": "Maintenance Due Alert:\n{{#each results}}\n- {{year}} {{make}} {{model}} ({{license_plate}}): {{current_mileage}} km / next service at {{next_service_km}} km\n{{/each}}"
+          },
+          "sort_order": 2
+        },
+        {
+          "id": "send-alert",
+          "name": "Send maintenance notification",
+          "type": "send",
+          "config": {
+            "channel": "default",
+            "message": "{{formatted_output}}"
+          },
+          "sort_order": 3
+        }
+      ],
+      "status": "active"
+    },
+    {
+      "name": "Booking Confirmation",
+      "description": "Sends a confirmation message when a booking is confirmed, including vehicle details, dates, and pricing.",
+      "trigger": {
+        "type": "event",
+        "event": "booking.state_change",
+        "condition": "new_state == 'confirmed'"
+      },
+      "steps": [
+        {
+          "id": "get-booking",
+          "name": "Get booking details",
+          "type": "query",
+          "config": {
+            "doctype": "booking",
+            "filter": "id = '{{trigger.record_id}}'",
+            "fields": [
+              "customer_name",
+              "customer_email",
+              "vehicle_id",
+              "pickup_date",
+              "return_date",
+              "daily_rate",
+              "total_amount",
+              "pickup_location",
+              "extras"
+            ]
+          },
+          "sort_order": 0
+        },
+        {
+          "id": "get-vehicle",
+          "name": "Get vehicle details",
+          "type": "query",
+          "config": {
+            "doctype": "vehicle",
+            "filter": "id = '{{booking.vehicle_id}}'",
+            "fields": ["make", "model", "year", "license_plate", "color", "category"]
+          },
+          "sort_order": 1
+        },
+        {
+          "id": "format-confirmation",
+          "name": "Format confirmation message",
+          "type": "transform",
+          "config": {
+            "template": "Booking Confirmed!\n\nCustomer: {{booking.customer_name}}\nVehicle: {{vehicle.year}} {{vehicle.make}} {{vehicle.model}} ({{vehicle.color}})\nPlate: {{vehicle.license_plate}}\nPickup: {{booking.pickup_date}} at {{booking.pickup_location}}\nReturn: {{booking.return_date}}\nRate: ${{booking.daily_rate}}/day\nTotal: ${{booking.total_amount}}"
+          },
+          "sort_order": 2
+        },
+        {
+          "id": "send-confirmation",
+          "name": "Send booking confirmation",
+          "type": "send",
+          "config": {
+            "channel": "default",
+            "message": "{{formatted_output}}"
+          },
+          "sort_order": 3
+        }
+      ],
+      "status": "active"
+    },
+    {
+      "name": "Insurance Expiry Alert",
+      "description": "Checks weekly for vehicles with insurance expiring within the next 30 days and sends an alert to schedule renewals.",
+      "trigger": {
+        "type": "schedule",
+        "cron": "0 9 * * 1"
+      },
+      "steps": [
+        {
+          "id": "query-expiring",
+          "name": "Find vehicles with expiring insurance",
+          "type": "query",
+          "config": {
+            "doctype": "vehicle",
+            "filter": "insurance_expiry <= date('now', '+30 days') AND insurance_expiry >= date('now') AND status != 'retired'",
+            "fields": ["make", "model", "license_plate", "insurance_expiry", "insurance_policy"]
+          },
+          "sort_order": 0
+        },
+        {
+          "id": "check-has-expiring",
+          "name": "Check if any insurance is expiring",
+          "type": "condition",
+          "config": {
+            "expression": "results.length > 0",
+            "on_false": "skip_remaining"
+          },
+          "sort_order": 1
+        },
+        {
+          "id": "format-alert",
+          "name": "Format insurance expiry alert",
+          "type": "transform",
+          "config": {
+            "template": "Insurance Expiry Alert — Renewals needed:\n{{#each results}}\n- {{year}} {{make}} {{model}} ({{license_plate}}): Policy {{insurance_policy}} expires {{insurance_expiry}}\n{{/each}}"
+          },
+          "sort_order": 2
+        },
+        {
+          "id": "send-alert",
+          "name": "Send insurance expiry notification",
+          "type": "send",
+          "config": {
+            "channel": "default",
+            "message": "{{formatted_output}}"
+          },
+          "sort_order": 3
+        }
+      ],
+      "status": "active"
+    }
+  ]
+}

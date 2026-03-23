@@ -1102,7 +1102,21 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
 
     try {
       const map = await this.deps.readWorkspaceMapFromStore();
-      const classification: Classification | null = await this.deps.dotFolder.readClassification();
+      let classification: Classification | null = null;
+      const memory = this.deps.getMemory();
+      if (memory) {
+        const raw = await memory.getClassification();
+        if (raw) {
+          try {
+            classification = JSON.parse(raw) as Classification;
+          } catch {
+            // malformed JSON — fall back to dotfolder below
+          }
+        }
+      }
+      if (!classification) {
+        classification = await this.deps.dotFolder.readClassification();
+      }
 
       if (!map && !classification) {
         logger.warn('writeExplorationSummaryToMemory: no exploration data — skipping');
@@ -1181,6 +1195,14 @@ When done, output ONLY the workspace map as a JSON object to stdout — no other
 
       const content = lines.join('\n');
       await this.deps.dotFolder.writeMemoryFile(content);
+      const mem = this.deps.getMemory();
+      if (mem) {
+        try {
+          await mem.setSystemConfig('memory_md_backup', content);
+        } catch (e) {
+          logger.debug({ err: e }, 'Failed to backup memory.md to SQLite');
+        }
+      }
       logger.info(
         { memoryPath, lineCount: lines.length },
         'Exploration summary written to memory.md',

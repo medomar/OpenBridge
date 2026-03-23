@@ -30,7 +30,7 @@ export interface ActivityRecord {
   model?: string;
   profile?: string;
   task_summary?: string;
-  status: 'starting' | 'running' | 'completing' | 'done' | 'failed';
+  status: 'starting' | 'running' | 'completing' | 'done' | 'failed' | 'abandoned';
   progress_pct?: number;
   parent_id?: string;
   pid?: number;
@@ -177,6 +177,24 @@ export function markStaleActivityDone(db: Database.Database): number {
        WHERE status IN ('starting', 'running', 'completing')`,
     )
     .run(now, now);
+  return result.changes;
+}
+
+/**
+ * Update all `running` agent_activity records whose `started_at` is older than
+ * `maxAgeMs` milliseconds to `abandoned` status, setting `completed_at` to the
+ * sweep time. Returns the number of rows updated.
+ */
+export function sweepStaleRunning(db: Database.Database, maxAgeMs: number): number {
+  const now = new Date().toISOString();
+  const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
+  const result = db
+    .prepare(
+      `UPDATE agent_activity
+       SET status = 'abandoned', completed_at = ?, updated_at = ?
+       WHERE status = 'running' AND started_at < ?`,
+    )
+    .run(now, now, cutoff);
   return result.changes;
 }
 

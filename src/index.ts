@@ -1,6 +1,5 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import {
@@ -23,8 +22,6 @@ import { MasterManager } from './master/index.js';
 import { createAdapterRegistry } from './core/adapter-registry.js';
 import { McpRegistry } from './core/mcp-registry.js';
 import type { V2Config } from './types/config.js';
-import { isPackagedMode, getConfigDir, checkForUpdate } from './cli/utils.js';
-import { runInit } from './cli/init.js';
 import { runHealthCheck } from './core/health.js';
 
 interface PackageJson {
@@ -35,6 +32,18 @@ const _pkg = _require('../package.json') as PackageJson;
 const OPENBRIDGE_VERSION = _pkg.version;
 
 const logger = createLogger('main');
+
+/** Emit trust-level startup warnings. Exported for unit testing. */
+export function logTrustLevelAtStartup(
+  log: { warn: (msg: string) => void; info: (msg: string) => void },
+  trustLevel: string,
+): void {
+  if (trustLevel === 'trusted') {
+    log.warn('Running in TRUSTED mode — all agents have full access within workspace');
+  } else if (trustLevel === 'sandbox') {
+    log.info('Running in SANDBOX mode — agents are read-only');
+  }
+}
 
 // Module-level flag prevents double-shutdown when SIGINT and SIGTERM arrive together
 let shutdownInProgress = false;
@@ -286,6 +295,10 @@ async function startV2Flow(
   // Step 3: Create Master AI and wire into bridge BEFORE starting
   logger.info({ workspacePath: resolvedWorkspacePath }, 'Launching Master AI...');
 
+  // Log trust level at startup (OB-F215)
+  const trustLevel = v2Config.security?.trustLevel ?? 'standard';
+  logTrustLevelAtStartup(logger, trustLevel);
+
   // Resolve CLI adapter based on the discovered master tool
   const adapterRegistry = createAdapterRegistry();
   const cliAdapter = adapterRegistry.getForTool(selectedMaster);
@@ -302,6 +315,7 @@ async function startV2Flow(
     workspaceExclude: v2Config.workspace?.exclude,
     workspaceInclude: v2Config.workspace?.include,
     workerMaxFixIterations: v2Config.worker?.maxFixIterations,
+    trustLevel: v2Config.security?.trustLevel,
   });
 
   // Wire workspace polling callback — triggers re-exploration on new commits
@@ -455,25 +469,6 @@ async function main(): Promise<void> {
   }
 
   logger.info({ headless: isHeadless }, 'OpenBridge starting...');
-
-  // Packaged mode: auto-run the setup wizard on first launch when config.json is absent
-  if (isPackagedMode()) {
-    const configDir = getConfigDir();
-    const firstRunConfigPath = path.join(configDir, 'config.json');
-    if (!existsSync(firstRunConfigPath)) {
-      process.stdout.write('First-time setup detected — running setup wizard...\n');
-      await runInit({ outputPath: firstRunConfigPath });
-    }
-
-    // Non-blocking auto-update check — fires once per session, never delays startup
-    void checkForUpdate().then((update) => {
-      if (update?.available) {
-        process.stdout.write(
-          `A new version of OpenBridge is available: v${update.latest} (you have v${update.current}). Download: ${update.downloadUrl}\n`,
-        );
-      }
-    });
-  }
 
   let bridge: Bridge | null = null;
   let workspaceManager: WorkspaceManager | null = null;

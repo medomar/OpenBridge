@@ -1,6 +1,11 @@
 import { homedir } from 'node:os';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { AppConfigSchema, V2ConfigSchema } from '../../src/types/config.js';
+import {
+  AppConfigSchema,
+  V2ConfigSchema,
+  SecurityConfigSchema,
+  getEffectiveConfirmHighRisk,
+} from '../../src/types/config.js';
 import {
   isV2Config,
   convertV2ToInternal,
@@ -656,5 +661,54 @@ describe('injectDevConnectors', () => {
 
     const webchat = config.connectors.find((c) => c.type === 'webchat');
     expect(webchat).toEqual({ type: 'webchat', enabled: true, options: {} });
+  });
+});
+
+describe('SecurityConfigSchema trustLevel', () => {
+  it('defaults trustLevel to standard when not specified', () => {
+    const result = SecurityConfigSchema.parse({});
+    expect(result.trustLevel).toBe('standard');
+  });
+
+  it('parses trusted trustLevel correctly', () => {
+    const result = SecurityConfigSchema.parse({ trustLevel: 'trusted' });
+    expect(result.trustLevel).toBe('trusted');
+  });
+
+  it('parses sandbox trustLevel correctly', () => {
+    const result = SecurityConfigSchema.parse({ trustLevel: 'sandbox' });
+    expect(result.trustLevel).toBe('sandbox');
+  });
+
+  it('throws ZodError for invalid trustLevel', () => {
+    expect(() => SecurityConfigSchema.parse({ trustLevel: 'invalid' })).toThrow();
+  });
+
+  describe('getEffectiveConfirmHighRisk', () => {
+    it('returns false for trusted level', () => {
+      const security = SecurityConfigSchema.parse({ trustLevel: 'trusted' });
+      expect(getEffectiveConfirmHighRisk(security)).toBe(false);
+    });
+
+    it('returns true for sandbox level', () => {
+      const security = SecurityConfigSchema.parse({ trustLevel: 'sandbox' });
+      expect(getEffectiveConfirmHighRisk(security)).toBe(true);
+    });
+
+    it('returns false for standard with confirmHighRisk: false', () => {
+      const security = SecurityConfigSchema.parse({
+        trustLevel: 'standard',
+        confirmHighRisk: false,
+      });
+      expect(getEffectiveConfirmHighRisk(security)).toBe(false);
+    });
+
+    it('returns true for standard with confirmHighRisk: true', () => {
+      const security = SecurityConfigSchema.parse({
+        trustLevel: 'standard',
+        confirmHighRisk: true,
+      });
+      expect(getEffectiveConfirmHighRisk(security)).toBe(true);
+    });
   });
 });

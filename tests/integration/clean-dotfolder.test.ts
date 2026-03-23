@@ -70,6 +70,7 @@ vi.mock('../../src/core/agent-runner.js', () => {
     manifestToSpawnOptions: vi.fn((m: unknown) =>
       Promise.resolve({ spawnOptions: m, cleanup: async () => {} }),
     ),
+    setAgentRunnerMetrics: vi.fn(),
   };
 });
 

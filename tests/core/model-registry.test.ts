@@ -35,8 +35,8 @@ describe('ModelRegistry', () => {
 
       const all = registry.getAll();
       expect(all.map((m) => m.id)).toContain('gpt-4o-mini');
-      expect(all.map((m) => m.id)).toContain('gpt-4o');
-      expect(all.map((m) => m.id)).toContain('o1');
+      expect(all.map((m) => m.id)).toContain('gpt-4.1');
+      expect(all.map((m) => m.id)).toContain('o3');
     });
 
     it('accepts custom model entries instead of defaults', () => {
@@ -117,8 +117,8 @@ describe('ModelRegistry', () => {
     it('translates foreign provider models to equivalent tier', () => {
       const registry = createModelRegistry('claude');
 
-      // gpt-4o is aider's "balanced" → claude's balanced is "sonnet"
-      expect(registry.resolveModelOrTier('gpt-4o')).toBe('sonnet');
+      // gpt-4.1 is aider's "balanced" → claude's balanced is "sonnet"
+      expect(registry.resolveModelOrTier('gpt-4.1')).toBe('sonnet');
       // gpt-5.2-codex is codex's "fast" → claude's fast is "haiku"
       expect(registry.resolveModelOrTier('gpt-5.2-codex')).toBe('haiku');
     });
@@ -221,6 +221,38 @@ describe('createModelRegistry', () => {
     expect(registry.resolve('fast')?.id).toBe('alpha');
     expect(registry.resolve('powerful')?.id).toBe('omega');
     expect(registry.resolve('balanced')).toBeUndefined();
+  });
+});
+
+// ── Provider-specific tier mappings (OB-F204) ────────────────────
+
+describe('Codex tier mappings', () => {
+  it('powerful tier resolves to gpt-5.3-codex', () => {
+    const registry = createModelRegistry('codex');
+    expect(registry.resolve('powerful')?.id).toBe('gpt-5.3-codex');
+  });
+
+  it('fast and balanced tiers resolve to gpt-5.2-codex', () => {
+    const registry = createModelRegistry('codex');
+    expect(registry.resolve('fast')?.id).toBe('gpt-5.2-codex');
+    expect(registry.resolve('balanced')?.id).toBe('gpt-5.2-codex');
+  });
+});
+
+describe('Aider tier mappings', () => {
+  it('balanced tier resolves to gpt-4.1', () => {
+    const registry = createModelRegistry('aider');
+    expect(registry.resolve('balanced')?.id).toBe('gpt-4.1');
+  });
+
+  it('powerful tier resolves to o3', () => {
+    const registry = createModelRegistry('aider');
+    expect(registry.resolve('powerful')?.id).toBe('o3');
+  });
+
+  it('fast tier resolves to gpt-4o-mini', () => {
+    const registry = createModelRegistry('aider');
+    expect(registry.resolve('fast')?.id).toBe('gpt-4o-mini');
   });
 });
 

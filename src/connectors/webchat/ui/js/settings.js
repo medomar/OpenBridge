@@ -71,13 +71,17 @@ function loadDiscoveredTools(retryCount) {
   if (!select) return;
   const attempt = retryCount || 0;
   fetch('/api/discovery')
-    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (r) {
+      return r.ok ? r.json() : null;
+    })
     .then(function (data) {
       if (!data || !Array.isArray(data.tools)) return;
       // If no tools yet and we haven't retried too many times, retry after a delay
       // (tools may not be wired yet during startup)
       if (data.tools.length === 0 && attempt < 3) {
-        setTimeout(function () { loadDiscoveredTools(attempt + 1); }, 2000);
+        setTimeout(function () {
+          loadDiscoveredTools(attempt + 1);
+        }, 2000);
         return;
       }
       // Clear existing options except the first placeholder
@@ -87,7 +91,8 @@ function loadDiscoveredTools(retryCount) {
       for (const tool of data.tools) {
         const opt = document.createElement('option');
         opt.value = tool.name || tool.id || '';
-        opt.textContent = (tool.name || tool.id || 'Unknown') + (tool.version ? ' v' + tool.version : '');
+        opt.textContent =
+          (tool.name || tool.id || 'Unknown') + (tool.version ? ' v' + tool.version : '');
         select.appendChild(opt);
       }
       // Restore saved preference
@@ -97,7 +102,9 @@ function loadDiscoveredTools(retryCount) {
     .catch(function () {
       // Discovery API unavailable — retry after a delay if early in startup
       if (attempt < 3) {
-        setTimeout(function () { loadDiscoveredTools(attempt + 1); }, 2000);
+        setTimeout(function () {
+          loadDiscoveredTools(attempt + 1);
+        }, 2000);
       }
     });
 }
@@ -198,7 +205,9 @@ function loadMcpServers() {
   const list = document.getElementById('mcp-server-list');
   if (!list) return;
   fetch('/api/mcp/servers')
-    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (r) {
+      return r.ok ? r.json() : null;
+    })
     .then(function (data) {
       if (!data || !Array.isArray(data.servers)) return;
       list.innerHTML = '';
@@ -209,21 +218,39 @@ function loadMcpServers() {
       for (const server of data.servers) {
         const item = document.createElement('div');
         item.className = 'mcp-server-item';
-        const statusClass = server.status === 'healthy' ? 'mcp-status-healthy'
-          : server.status === 'error' ? 'mcp-status-error' : 'mcp-status-unknown';
+        const statusClass =
+          server.status === 'healthy'
+            ? 'mcp-status-healthy'
+            : server.status === 'error'
+              ? 'mcp-status-error'
+              : 'mcp-status-unknown';
         const toggleChecked = server.enabled ? 'checked' : '';
         item.innerHTML =
-          '<div class="mcp-server-info">'
-          + '<span class="mcp-status-dot ' + statusClass + '" aria-hidden="true"></span>'
-          + '<span class="mcp-server-name">' + escapeHtml(server.name) + '</span>'
-          + '</div>'
-          + '<div class="mcp-server-actions">'
-          + '<label class="mcp-toggle" aria-label="Enable ' + escapeHtml(server.name) + '">'
-          + '<input type="checkbox" class="mcp-toggle-input" ' + toggleChecked + ' data-name="' + escapeHtml(server.name) + '" />'
-          + '<span class="mcp-toggle-slider"></span>'
-          + '</label>'
-          + '<button class="mcp-remove-btn" data-name="' + escapeHtml(server.name) + '" aria-label="Remove ' + escapeHtml(server.name) + '">\u2715</button>'
-          + '</div>';
+          '<div class="mcp-server-info">' +
+          '<span class="mcp-status-dot ' +
+          statusClass +
+          '" aria-hidden="true"></span>' +
+          '<span class="mcp-server-name">' +
+          escapeHtml(server.name) +
+          '</span>' +
+          '</div>' +
+          '<div class="mcp-server-actions">' +
+          '<label class="mcp-toggle" aria-label="Enable ' +
+          escapeHtml(server.name) +
+          '">' +
+          '<input type="checkbox" class="mcp-toggle-input" ' +
+          toggleChecked +
+          ' data-name="' +
+          escapeHtml(server.name) +
+          '" />' +
+          '<span class="mcp-toggle-slider"></span>' +
+          '</label>' +
+          '<button class="mcp-remove-btn" data-name="' +
+          escapeHtml(server.name) +
+          '" aria-label="Remove ' +
+          escapeHtml(server.name) +
+          '">\u2715</button>' +
+          '</div>';
         list.appendChild(item);
       }
       list.querySelectorAll('.mcp-toggle-input').forEach(function (input) {
@@ -241,7 +268,9 @@ function loadMcpServers() {
           const name = btn.getAttribute('data-name');
           if (!confirm('Remove MCP server "' + name + '"?')) return;
           fetch('/api/mcp/servers/' + encodeURIComponent(name), { method: 'DELETE' })
-            .then(function (r) { if (r.ok) loadMcpServers(); })
+            .then(function (r) {
+              if (r.ok) loadMcpServers();
+            })
             .catch(function () {});
         });
       });
