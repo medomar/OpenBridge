@@ -186,6 +186,7 @@ export class DotFolderManager {
    */
   public async writeAnalysisMarker(marker: WorkspaceAnalysisMarker): Promise<void> {
     const validated = WorkspaceAnalysisMarkerSchema.parse(marker);
+    await fs.mkdir(this.dotFolderPath, { recursive: true });
     const markerPath = this.getAnalysisMarkerPath();
     await fs.writeFile(markerPath, JSON.stringify(validated, null, 2), 'utf-8');
   }
