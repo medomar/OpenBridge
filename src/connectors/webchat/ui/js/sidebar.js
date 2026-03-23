@@ -198,7 +198,10 @@ function truncateSnippet(content, query, maxLen) {
   let pos = -1;
   for (let i = 0; i < terms.length; i++) {
     const idx = content.toLowerCase().indexOf(terms[i].toLowerCase());
-    if (idx !== -1) { pos = idx; break; }
+    if (idx !== -1) {
+      pos = idx;
+      break;
+    }
   }
   if (pos === -1) {
     return content.slice(0, maxLen) + (content.length > maxLen ? '\u2026' : '');
@@ -221,7 +224,9 @@ function highlightTerms(text, query) {
   const terms = query.trim().split(/\s+/).filter(Boolean);
   if (terms.length === 0) return escaped;
   const pattern = terms
-    .map(function (t) { return escapeHtml(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); })
+    .map(function (t) {
+      return escapeHtml(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    })
     .join('|');
   const re = new RegExp('(' + pattern + ')', 'gi');
   return escaped.replace(re, '<mark class="sidebar-match">$1</mark>');
@@ -289,7 +294,8 @@ async function runSearch(query) {
   }
 
   if (!Array.isArray(results) || results.length === 0) {
-    container.innerHTML = '<div class="sidebar-empty">No results for \u201c' + escapeHtml(query) + '\u201d.</div>';
+    container.innerHTML =
+      '<div class="sidebar-empty">No results for \u201c' + escapeHtml(query) + '\u201d.</div>';
     return;
   }
 

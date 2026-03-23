@@ -31,6 +31,8 @@ import {
   generateDirectoryDivePrompt,
   generateSubProjectDivePrompt,
   generateSummaryPrompt,
+  trimPayload,
+  PROMPT_CHAR_BUDGET,
 } from './exploration-prompts.js';
 import { parseAIResult } from './result-parser.js';
 import {
@@ -57,9 +59,9 @@ import type { DiscoveredTool } from '../types/discovery.js';
 import { createLogger } from '../core/logger.js';
 import type { MemoryManager } from '../memory/index.js';
 import type { Chunk } from '../memory/chunk-store.js';
-import { readdir } from 'node:fs/promises';
+import { readdir, access } from 'node:fs/promises';
 import path from 'node:path';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 const logger = createLogger('exploration-coordinator');
 
@@ -665,6 +667,9 @@ export class ExplorationCoordinator {
         );
       }
 
+      // Post-exploration assertion: verify workspace-map.json exists (OB-1508)
+      await this.assertWorkspaceMapExists(state);
+
       return this.buildSummary(state);
     } catch (error) {
       logger.error({ err: error }, 'Exploration failed');
@@ -814,7 +819,9 @@ export class ExplorationCoordinator {
     await this.writeExplorationState(state);
 
     const phase1RowId = await this.insertPhaseRow('structure');
-    const prompt = generateStructureScanPrompt(this.workspacePath);
+    const prompt =
+      generateStructureScanPrompt(this.workspacePath) +
+      '\n\nIMPORTANT: Keep your file listing concise. For directories with >50 files, list only the first 50 and note the total count. Focus on file types and structure, not individual files. Your output must stay under 100K characters to avoid truncation.';
     const startTime = Date.now();
 
     const result = await this.agentRunner.spawn({
@@ -835,8 +842,20 @@ export class ExplorationCoordinator {
       throw new Error(`Structure scan failed with exit code ${result.exitCode}: ${result.stderr}`);
     }
 
+    // Trim agent response if it exceeds PROMPT_CHAR_BUDGET to avoid downstream
+    // prompt truncation when the structure scan is embedded in later phases (OB-F228).
+    let phase1Stdout = result.stdout;
+    if (phase1Stdout.length > PROMPT_CHAR_BUDGET) {
+      try {
+        const raw = JSON.parse(phase1Stdout) as Record<string, unknown>;
+        phase1Stdout = trimPayload(raw, PROMPT_CHAR_BUDGET, 'topLevelFiles');
+      } catch {
+        // keep original stdout if JSON parse fails; parseAIResult handles extraction
+      }
+    }
+
     const parsed = parseAIResult<StructureScan>(
-      result.stdout,
+      phase1Stdout,
       'structure scan',
       StructureScanAISchema,
     );
@@ -1429,8 +1448,33 @@ export class ExplorationCoordinator {
     try {
       await this.dotFolder.writeWorkspaceMap(workspaceMap);
     } catch (err) {
-      logger.warn({ err }, 'Failed to write workspace-map.json JSON fallback');
+      logger.error(
+        { err },
+        'Failed to write workspace-map.json — Master will lack workspace context',
+      );
     }
+
+    // Post-write verification: ensure workspace-map.json actually exists on disk (OB-1507).
+    const mapPath = this.dotFolder.getMapPath();
+    try {
+      await access(mapPath);
+      logger.info({ path: mapPath }, 'workspace-map.json verified on disk');
+    } catch {
+      logger.error(
+        { path: mapPath },
+        'workspace-map.json missing after write — attempting direct fallback write',
+      );
+      // Direct fallback: write the raw JSON without Zod validation to bypass any schema issues
+      try {
+        const { writeFile, mkdir } = await import('node:fs/promises');
+        await mkdir(this.dotFolder.getDotFolderPath(), { recursive: true });
+        await writeFile(mapPath, JSON.stringify(workspaceMap, null, 2), 'utf-8');
+        logger.info('workspace-map.json fallback write succeeded');
+      } catch (fallbackErr) {
+        logger.error({ err: fallbackErr }, 'workspace-map.json fallback write also failed');
+      }
+    }
+
     await this.storeExplorationChunks('.', 'structure', workspaceMap);
     state.phases.assembly = 'completed';
     await this.writeExplorationState(state);
@@ -1537,6 +1581,76 @@ export class ExplorationCoordinator {
       totalAITimeMs: 0,
       subProjects: [],
     };
+  }
+
+  /**
+   * Post-exploration assertion (OB-1508): verify workspace-map.json exists on disk after
+   * all 5 phases complete. If missing, log an ERROR with the exploration summary and
+   * attempt to generate a minimal map from intermediate files (structure-scan + classification).
+   */
+  private async assertWorkspaceMapExists(state: ExplorationState): Promise<void> {
+    const mapPath = this.dotFolder.getMapPath();
+    try {
+      await access(mapPath);
+      // File exists — all good
+      return;
+    } catch {
+      // File missing after all phases completed — unexpected
+    }
+
+    const directoriesExplored = state.directoryDives.filter((d) => d.status === 'completed').length;
+    logger.error(
+      {
+        workspacePath: this.workspacePath,
+        mapPath,
+        phases: state.phases,
+        totalCalls: state.totalCalls,
+        directoriesExplored,
+      },
+      'workspace-map.json missing after exploration completed — attempting minimal map generation from intermediate files',
+    );
+
+    const structureScan = await this.readStructureScanFromStore();
+    const classification = await this.readClassificationFromStore();
+
+    if (!structureScan && !classification) {
+      logger.error('Cannot generate minimal workspace map — no intermediate files available');
+      return;
+    }
+
+    const projectName = this.workspacePath.split('/').pop() ?? 'unknown';
+    const minimalMap: WorkspaceMap = {
+      workspacePath: this.workspacePath,
+      projectName,
+      projectType: classification?.projectType ?? 'unknown',
+      frameworks: classification?.frameworks ?? [],
+      structure: structureScan
+        ? Object.fromEntries(
+            structureScan.topLevelDirs.map((dir) => [
+              dir,
+              {
+                path: dir,
+                purpose: 'directory',
+                fileCount: structureScan.directoryCounts[dir] ?? 0,
+              },
+            ]),
+          )
+        : {},
+      keyFiles: [],
+      entryPoints: [],
+      commands: classification?.commands ?? {},
+      dependencies: [],
+      summary: `Minimal map generated from exploration intermediate files. Project type: ${classification?.projectType ?? 'unknown'}.`,
+      generatedAt: new Date().toISOString(),
+      schemaVersion: '1.0.0',
+    };
+
+    try {
+      await this.dotFolder.writeWorkspaceMap(minimalMap);
+      logger.info({ mapPath }, 'Minimal workspace-map.json generated from intermediate files');
+    } catch (writeErr) {
+      logger.error({ err: writeErr }, 'Failed to write minimal workspace-map.json');
+    }
   }
 
   /**

@@ -8,6 +8,8 @@ import {
   recordLearning,
   getLearnedParams,
   getModelStatsForTask,
+  recordTaskEfficiency,
+  getTaskEfficiency,
   type TaskRecord,
 } from '../../src/memory/task-store.js';
 
@@ -236,6 +238,64 @@ describe('task-store.ts', () => {
       expect(stats).not.toBeNull();
       expect(stats!.total_tasks).toBe(5);
       expect(1 - stats!.success_rate).toBeCloseTo(0.8);
+    });
+  });
+
+  describe('recordTaskEfficiency + getTaskEfficiency (OB-1574)', () => {
+    it('creates a record on first call', () => {
+      recordTaskEfficiency(db, 'complex-task', { turnsUsed: 3, workerCount: 1, durationMs: 15000 });
+      const record = getTaskEfficiency(db, 'complex-task');
+      expect(record).not.toBeNull();
+      expect(record!.task_class).toBe('complex-task');
+      expect(record!.avg_turns).toBeCloseTo(3);
+      expect(record!.avg_workers).toBeCloseTo(1);
+      expect(record!.sample_count).toBe(1);
+    });
+
+    it('returns null when no data exists for the class', () => {
+      const record = getTaskEfficiency(db, 'nonexistent-class');
+      expect(record).toBeNull();
+    });
+
+    it('accumulates running averages over 5 calls and reports correct aggregates', () => {
+      for (let i = 0; i < 5; i++) {
+        recordTaskEfficiency(db, 'complex-task', {
+          turnsUsed: 3,
+          workerCount: 1,
+          durationMs: 15000,
+        });
+      }
+      const record = getTaskEfficiency(db, 'complex-task');
+      expect(record).not.toBeNull();
+      expect(record!.sample_count).toBe(5);
+      expect(record!.avg_turns).toBeCloseTo(3);
+      expect(record!.avg_workers).toBeCloseTo(1);
+    });
+
+    it('correctly averages mixed metrics', () => {
+      // turns: 2, 4 → avg 3; workers: 1, 3 → avg 2
+      recordTaskEfficiency(db, 'tool-use', { turnsUsed: 2, workerCount: 1, durationMs: 10000 });
+      recordTaskEfficiency(db, 'tool-use', { turnsUsed: 4, workerCount: 3, durationMs: 20000 });
+      const record = getTaskEfficiency(db, 'tool-use');
+      expect(record).not.toBeNull();
+      expect(record!.sample_count).toBe(2);
+      expect(record!.avg_turns).toBeCloseTo(3);
+      expect(record!.avg_workers).toBeCloseTo(2);
+    });
+
+    it('tracks different task classes independently', () => {
+      recordTaskEfficiency(db, 'quick-answer', { turnsUsed: 1, workerCount: 0, durationMs: 5000 });
+      recordTaskEfficiency(db, 'complex-task', {
+        turnsUsed: 10,
+        workerCount: 3,
+        durationMs: 60000,
+      });
+      const qa = getTaskEfficiency(db, 'quick-answer');
+      const ct = getTaskEfficiency(db, 'complex-task');
+      expect(qa!.avg_turns).toBeCloseTo(1);
+      expect(ct!.avg_turns).toBeCloseTo(10);
+      expect(qa!.sample_count).toBe(1);
+      expect(ct!.sample_count).toBe(1);
     });
   });
 });

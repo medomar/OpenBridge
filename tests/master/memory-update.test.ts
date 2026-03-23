@@ -139,6 +139,24 @@ function getCapturedPrompt(): string | undefined {
   return opts?.prompt;
 }
 
+/**
+ * Mock buildMasterSpawnOptions on a MasterManager instance so that
+ * triggerMemoryUpdate() can produce a valid SpawnOptions without
+ * requiring a fully initialized promptContextBuilder / session.
+ */
+function mockBuildMasterSpawnOptions(mm: MasterManager): void {
+  (mm as unknown as Record<string, unknown>).buildMasterSpawnOptions = (
+    prompt: string,
+    timeout?: number,
+    maxTurns?: number,
+  ): SpawnOptions => ({
+    prompt,
+    workspacePath: '/tmp/test',
+    maxTurns: maxTurns ?? 5,
+    timeout,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -203,6 +221,7 @@ describe('MasterManager — triggerMemoryUpdate() context injection (OB-1120)', 
 
     // Inject fake session to bypass early-return guard
     (masterManager as unknown as Record<string, unknown>).masterSession = fakeMasterSession;
+    mockBuildMasterSpawnOptions(masterManager);
 
     await (
       masterManager as unknown as { triggerMemoryUpdate(): Promise<void> }
@@ -232,6 +251,7 @@ describe('MasterManager — triggerMemoryUpdate() context injection (OB-1120)', 
     });
 
     (masterManager as unknown as Record<string, unknown>).masterSession = fakeMasterSession;
+    mockBuildMasterSpawnOptions(masterManager);
 
     await (
       masterManager as unknown as { triggerMemoryUpdate(): Promise<void> }
@@ -259,6 +279,7 @@ describe('MasterManager — triggerMemoryUpdate() context injection (OB-1120)', 
     });
 
     (masterManager as unknown as Record<string, unknown>).masterSession = fakeMasterSession;
+    mockBuildMasterSpawnOptions(masterManager);
 
     await (
       masterManager as unknown as { triggerMemoryUpdate(): Promise<void> }
@@ -285,6 +306,7 @@ describe('MasterManager — triggerMemoryUpdate() context injection (OB-1120)', 
     });
 
     (masterManager as unknown as Record<string, unknown>).masterSession = fakeMasterSession;
+    mockBuildMasterSpawnOptions(masterManager);
 
     await (
       masterManager as unknown as { triggerMemoryUpdate(): Promise<void> }
@@ -312,6 +334,7 @@ describe('MasterManager — triggerMemoryUpdate() context injection (OB-1120)', 
     });
 
     (masterManager as unknown as Record<string, unknown>).masterSession = fakeMasterSession;
+    mockBuildMasterSpawnOptions(masterManager);
 
     await (
       masterManager as unknown as { triggerMemoryUpdate(): Promise<void> }
@@ -341,6 +364,7 @@ describe('MasterManager — triggerMemoryUpdate() context injection (OB-1120)', 
     });
 
     (masterManager as unknown as Record<string, unknown>).masterSession = fakeMasterSession;
+    mockBuildMasterSpawnOptions(masterManager);
 
     await (
       masterManager as unknown as { triggerMemoryUpdate(): Promise<void> }

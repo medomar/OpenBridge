@@ -10,6 +10,9 @@ import {
   PRIORITY_WORKER_NEXT,
   PRIORITY_ANALYSIS,
 } from '../core/prompt-assembler.js';
+import { listDocTypes, getDocType } from '../intelligence/doctype-store.js';
+import { getTopSkills } from '../intelligence/skill-creator.js';
+import { buildUserPreferencesSection } from '../intelligence/user-preferences.js';
 import type { CLIAdapter } from '../core/cli-adapter.js';
 import type { SpawnOptions } from '../core/agent-runner.js';
 import {
@@ -17,6 +20,7 @@ import {
   formatWorkerNextStepsSection,
   formatPreFetchedKnowledgeSection,
   formatTargetedReaderSection,
+  formatTemplateSelectionSection,
 } from './master-system-prompt.js';
 import type { WorkerNextStepsEntry } from './master-system-prompt.js';
 import type { DotFolderManager } from './dotfolder-manager.js';
@@ -41,6 +45,18 @@ const logger = createLogger('prompt-context-builder');
 /** Maximum number of recent tasks to include in a context summary on restart */
 const RESTART_CONTEXT_TASK_LIMIT = 10;
 
+// ---------------------------------------------------------------------------
+// Section budget constants (OB-1511 — budget-aware prompt assembly)
+// ---------------------------------------------------------------------------
+
+/** Per-section character budgets. Total ~32K to prevent truncation in AgentRunner. */
+// System prompt section budget — generous cap to avoid truncating output routing, SHARE, and APP docs (OB-F216)
+export const SECTION_BUDGET_SYSTEM_PROMPT = 120_000;
+export const SECTION_BUDGET_MEMORY = 4_000;
+export const SECTION_BUDGET_WORKSPACE_MAP = 4_000;
+export const SECTION_BUDGET_RAG = 6_000;
+export const SECTION_BUDGET_CONVERSATION_HISTORY = 10_000;
+
 /**
  * Format an ISO timestamp as a human-readable "X ago" string.
  * Used to show the Master how fresh its workspace knowledge is.
@@ -58,6 +74,46 @@ export function formatTimeAgo(isoTimestamp: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Helper: trim conversation history keeping most recent messages (OB-1511)
+// ---------------------------------------------------------------------------
+
+/**
+ * Trim a conversation section to fit within a character budget,
+ * keeping the header line and as many of the most recent messages as possible.
+ */
+export function trimKeepingRecentMessages(section: string, budget: number): string {
+  const lines = section.split('\n');
+  // First line is the section header (e.g. "## Recent conversation (this session):")
+  const header = lines[0] ?? '';
+  const messageLines = lines.slice(1);
+
+  // Work backwards from the most recent messages
+  const kept: string[] = [];
+  let currentSize = header.length + 1; // +1 for newline after header
+  for (let i = messageLines.length - 1; i >= 0; i--) {
+    const line = messageLines[i]!;
+    const lineSize = line.length + 1; // +1 for newline
+    if (currentSize + lineSize > budget) break;
+    kept.unshift(line);
+    currentSize += lineSize;
+  }
+
+  if (kept.length < messageLines.length) {
+    logger.debug(
+      {
+        section: 'conversation history',
+        original: messageLines.length,
+        kept: kept.length,
+        budget,
+      },
+      'Trimmed conversation history to budget, keeping most recent messages',
+    );
+  }
+
+  return header + '\n' + kept.join('\n');
+}
+
+// ---------------------------------------------------------------------------
 // Exported interfaces
 // ---------------------------------------------------------------------------
 
@@ -72,6 +128,12 @@ export interface MasterContextSections {
   knowledgeContext?: string | null;
   targetedReaderContext?: string | null;
   analysisContext?: string | null;
+  /** Industry template suggestion — only injected when no DocTypes exist (OB-1466). */
+  templateSelectionContext?: string | null;
+  /** Learned skills section — top-10 skills with usage stats (OB-1471). */
+  learnedSkillsContext?: string | null;
+  /** User preferences section — per-sender format/language/hours (OB-1474). */
+  userPreferencesContext?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,6 +163,14 @@ export interface PromptContextBuilderDeps {
   // Store helpers delegated back to MasterManager
   readWorkspaceMapFromStore: () => Promise<WorkspaceMap | null>;
   readAllTasksFromStore: () => Promise<TaskRecord[]>;
+
+  /**
+   * Optional callback invoked after each `buildMasterSpawnOptions()` call with
+   * the assembled system prompt length in characters. Use this to wire the
+   * prompt size signal into `SessionCompactor.notifyPromptSize()` so that
+   * prompt-size-based early compaction can be triggered (OB-1513).
+   */
+  onPromptSizeReport?: (chars: number) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -154,9 +224,21 @@ export class PromptContextBuilder {
     const assembler = new PromptAssembler();
 
     // Base system prompt — identity and rules (highest priority)
+    // Budget is model-aware: 60% of adapter's system prompt budget, capped at 200K (OB-F216).
+    // The remaining 40% is reserved for injected sections (conversation context, RAG, learnings).
+    const systemPromptBudget = Math.min(budget.maxSystemPromptChars * 0.6, 200_000);
     const systemPrompt = this.deps.getSystemPrompt();
     if (systemPrompt) {
-      assembler.addSection('System Prompt', systemPrompt, PRIORITY_IDENTITY);
+      logger.debug(
+        {
+          section: 'System Prompt',
+          actual: systemPrompt.length,
+          budget: systemPromptBudget,
+          maxSystemPromptChars: budget.maxSystemPromptChars,
+        },
+        'Section size vs budget',
+      );
+      assembler.addSection('System Prompt', systemPrompt, PRIORITY_IDENTITY, systemPromptBudget);
     }
 
     // Drain pending cancellation notifications (OB-884).
@@ -201,30 +283,72 @@ export class PromptContextBuilder {
         if (mapLastVerifiedAt) {
           contextText += `\n\nMap last verified: ${formatTimeAgo(mapLastVerifiedAt)}`;
         }
+        const wsContent = '## Current Workspace Knowledge\n\n' + contextText;
+        logger.debug(
+          {
+            section: 'Workspace Knowledge',
+            actual: wsContent.length,
+            budget: SECTION_BUDGET_WORKSPACE_MAP,
+          },
+          'Section size vs budget',
+        );
         assembler.addSection(
           'Workspace Knowledge',
-          '## Current Workspace Knowledge\n\n' + contextText,
+          wsContent,
           PRIORITY_WORKSPACE,
+          SECTION_BUDGET_WORKSPACE_MAP,
         );
       }
     }
 
+    // Available DocTypes — registered business data entities
+    const docTypesSection = this.buildDocTypesSection();
+    if (docTypesSection) {
+      assembler.addSection('Available DocTypes', docTypesSection, 75);
+    }
+
+    // Learned skills — top-10 reusable skill patterns (OB-1471)
+    if (contextSections?.learnedSkillsContext) {
+      assembler.addSection('Learned Skills', contextSections.learnedSkillsContext, 73);
+    }
+
+    // User preferences — per-sender format/language/working-hours (OB-1474)
+    if (contextSections?.userPreferencesContext) {
+      assembler.addSection('User Preferences', contextSections.userPreferencesContext, 71);
+    }
+
+    // Industry template suggestion — only when no DocTypes exist (OB-1466)
+    if (contextSections?.templateSelectionContext) {
+      assembler.addSection('Template Selection', contextSections.templateSelectionContext, 72);
+    }
+
     // Conversation context — memory.md + session history + cross-session FTS5
     if (contextSections?.conversationContext) {
+      const convBudget = SECTION_BUDGET_MEMORY + SECTION_BUDGET_CONVERSATION_HISTORY;
+      logger.debug(
+        {
+          section: 'Conversation Context',
+          actual: contextSections.conversationContext.length,
+          budget: convBudget,
+        },
+        'Section size vs budget',
+      );
       assembler.addSection(
         'Conversation Context',
         contextSections.conversationContext,
         PRIORITY_MEMORY,
+        convBudget,
       );
     }
 
     // Pre-fetched knowledge (RAG)
     if (contextSections?.knowledgeContext) {
-      assembler.addSection(
-        'Knowledge Context',
-        formatPreFetchedKnowledgeSection(contextSections.knowledgeContext),
-        PRIORITY_RAG,
+      const ragContent = formatPreFetchedKnowledgeSection(contextSections.knowledgeContext);
+      logger.debug(
+        { section: 'Knowledge Context', actual: ragContent.length, budget: SECTION_BUDGET_RAG },
+        'Section size vs budget',
       );
+      assembler.addSection('Knowledge Context', ragContent, PRIORITY_RAG, SECTION_BUDGET_RAG);
     }
 
     // Targeted reader results
@@ -272,9 +396,198 @@ export class PromptContextBuilder {
     const assembled = assembler.assemble(budget.maxSystemPromptChars);
     if (assembled) {
       opts.systemPrompt = assembled;
+      // Notify compactor of assembled prompt size so it can trigger early
+      // compaction if the prompt approaches the truncation limit (OB-1513).
+      if (this.deps.onPromptSizeReport) {
+        this.deps.onPromptSizeReport(assembled.length);
+      }
     }
 
     return opts;
+  }
+
+  // -------------------------------------------------------------------------
+  // buildDocTypesSection (OB-1385)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Build the "## Available Business Data (DocTypes)" section for injection into
+   * the Master system prompt. Lists all registered DocTypes with their fields and
+   * available state-machine actions. Returns null when no DocTypes are registered
+   * or the database is unavailable.
+   */
+  private buildDocTypesSection(): string | null {
+    const memory = this.deps.getMemory();
+    if (!memory) return null;
+    const db = memory.getDb();
+    if (!db) return null;
+
+    let doctypes: ReturnType<typeof listDocTypes>;
+    try {
+      doctypes = listDocTypes(db);
+    } catch {
+      return null;
+    }
+    if (doctypes.length === 0) return null;
+
+    const lines: string[] = ['## Available Business Data (DocTypes)', ''];
+
+    for (const dt of doctypes) {
+      lines.push(`### ${dt.label_plural} (\`${dt.name}\`)`);
+
+      let full: ReturnType<typeof getDocType> | null = null;
+      try {
+        full = getDocType(db, dt.id);
+      } catch {
+        // If full detail fails, show minimal info
+      }
+
+      if (full) {
+        // Fields
+        const visibleFields = full.fields.sort((a, b) => a.sort_order - b.sort_order).slice(0, 8); // cap at 8 fields to avoid prompt bloat
+        if (visibleFields.length > 0) {
+          const fieldList = visibleFields
+            .map((f) => {
+              const req = f.required ? '*' : '';
+              return `  - \`${f.name}\` (${f.field_type})${req}`;
+            })
+            .join('\n');
+          lines.push('**Fields:**');
+          lines.push(fieldList);
+        }
+
+        // Available actions (transitions)
+        const uniqueActions = [
+          ...new Map(full.transitions.map((t) => [t.action_name, t.action_label])).entries(),
+        ];
+        if (uniqueActions.length > 0) {
+          const actionList = uniqueActions.map(([, label]) => `  - ${label}`).join('\n');
+          lines.push('**Actions:**');
+          lines.push(actionList);
+        }
+      }
+
+      // Example commands
+      const singular = dt.label_singular.toLowerCase();
+      const plural = dt.label_plural.toLowerCase();
+      lines.push('**Example commands:**');
+      lines.push(`  - "list ${plural}"`);
+      lines.push(`  - "create ${singular} for X"`);
+      if (full && full.transitions.length > 0) {
+        const firstAction = full.transitions[0];
+        if (firstAction) {
+          lines.push(`  - "${firstAction.action_label} ${singular} #42"`);
+        }
+      }
+
+      lines.push('');
+    }
+
+    return lines.join('\n');
+  }
+
+  // -------------------------------------------------------------------------
+  // buildLearnedSkillsContext (OB-1471)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Build the "## Learned Skills" section listing the top 10 skills by effectiveness.
+   * Returns null when no skills are stored or the database is unavailable.
+   */
+  buildLearnedSkillsContext(): string | null {
+    const memory = this.deps.getMemory();
+    if (!memory) return null;
+    const db = memory.getDb();
+    if (!db) return null;
+
+    let skills: ReturnType<typeof getTopSkills>;
+    try {
+      skills = getTopSkills(db, 10);
+    } catch {
+      return null;
+    }
+    if (skills.length === 0) return null;
+
+    const lines: string[] = [
+      '## Learned Skills',
+      '',
+      'You have built up reusable skill patterns from past tasks. When a user request matches a skill below, **prefer executing that learned skill** over generating a new plan from scratch.',
+      '',
+    ];
+
+    for (const skill of skills) {
+      const usageLine =
+        skill.usageCount > 0
+          ? ` | used ${skill.usageCount}× | ${Math.round(skill.successRate * 100)}% success`
+          : ' | not yet executed';
+      const durationLine =
+        skill.avgDurationMs !== null ? ` | avg ${Math.round(skill.avgDurationMs / 1000)}s` : '';
+      lines.push(`### ${skill.name}${usageLine}${durationLine}`);
+      lines.push(skill.description);
+      if (skill.steps.length > 0) {
+        lines.push(
+          `**Steps:** ${skill.steps.slice(0, 5).join(' → ')}${skill.steps.length > 5 ? ` → … (${skill.steps.length} steps total)` : ''}`,
+        );
+      }
+      if (skill.requiredDocTypes.length > 0) {
+        lines.push(`**DocTypes:** ${skill.requiredDocTypes.join(', ')}`);
+      }
+      lines.push('');
+    }
+
+    return lines.join('\n');
+  }
+
+  // -------------------------------------------------------------------------
+  // buildUserPreferencesContext (OB-1474)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Build the "## User Preferences for {sender}" section for the given sender.
+   * Returns null when no preference data is stored or the database is unavailable.
+   */
+  buildUserPreferencesContext(sender: string): string | null {
+    const memory = this.deps.getMemory();
+    if (!memory) return null;
+    const db = memory.getDb();
+    if (!db) return null;
+
+    try {
+      return buildUserPreferencesSection(db, sender);
+    } catch {
+      return null;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // buildTemplateSelectionContext (OB-1466)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Build the "## Industry Template Available" section for injection when
+   * no DocTypes are registered but industry templates exist in the workspace.
+   * Returns null when DocTypes already exist or no templates are available.
+   */
+  async buildTemplateSelectionContext(): Promise<string | null> {
+    const memory = this.deps.getMemory();
+    if (!memory) return null;
+    const db = memory.getDb();
+    if (!db) return null;
+
+    // Only suggest templates when the user has no DocTypes yet
+    let doctypeCount: number;
+    try {
+      doctypeCount = listDocTypes(db).length;
+    } catch {
+      return null;
+    }
+    if (doctypeCount > 0) return null;
+
+    // List templates available in the workspace
+    const templates = await this.deps.dotFolder.listAvailableTemplates();
+    if (templates.length === 0) return null;
+
+    return formatTemplateSelectionSection(templates);
   }
 
   // -------------------------------------------------------------------------
@@ -289,14 +602,25 @@ export class PromptContextBuilder {
    *   2. memory.md — Master's curated brain (always small, always relevant).
    *   3. Cross-session FTS5 — BM25-ranked hits from past sessions.
    */
-  async buildConversationContext(userMessage: string, sessionId?: string): Promise<string | null> {
+  async buildConversationContext(
+    userMessage: string,
+    sessionId?: string,
+    sender?: string,
+  ): Promise<string | null> {
     const sections: string[] = [];
     const memory = this.deps.getMemory();
+
+    // Budget for conversation history layers (session + cross-session)
+    const historyBudget = SECTION_BUDGET_CONVERSATION_HISTORY;
+    // Budget for memory.md layer
+    const memoryBudget = SECTION_BUDGET_MEMORY;
 
     // Layer 1: Recent conversation messages from the CURRENT session
     if (sessionId && memory) {
       try {
-        const sessionMessages = await memory.getSessionHistory(sessionId, 20);
+        const sessionMessages = sender
+          ? await memory.getSessionHistoryForSender(sessionId, sender, 20)
+          : await memory.getSessionHistory(sessionId, 20);
         const relevant = sessionMessages
           .filter((e) => e.role === 'user' || e.role === 'master')
           .slice(-10);
@@ -306,7 +630,12 @@ export class PromptContextBuilder {
             const content = e.content.length > 400 ? e.content.slice(0, 400) + '…' : e.content;
             return `${label}: ${content}`;
           });
-          sections.push('## Recent conversation (this session):\n' + lines.join('\n'));
+          let sessionSection = '## Recent conversation (this session):\n' + lines.join('\n');
+          // Trim to history budget, keeping most recent messages
+          if (sessionSection.length > historyBudget) {
+            sessionSection = trimKeepingRecentMessages(sessionSection, historyBudget);
+          }
+          sections.push(sessionSection);
         }
       } catch (err) {
         logger.warn({ err }, 'Failed to load session history for context injection');
@@ -317,16 +646,28 @@ export class PromptContextBuilder {
     try {
       const memoryContent = await this.deps.dotFolder.readMemoryFile();
       if (memoryContent && memoryContent.trim().length > 0) {
-        sections.push('## Memory:\n' + memoryContent.trim());
+        let memSection = '## Memory:\n' + memoryContent.trim();
+        if (memSection.length > memoryBudget) {
+          logger.debug(
+            { section: 'memory.md', actual: memSection.length, budget: memoryBudget },
+            'Trimming memory.md to budget',
+          );
+          memSection = memSection.slice(0, memoryBudget);
+        }
+        sections.push(memSection);
       }
     } catch (err) {
       logger.warn({ err }, 'Failed to read memory.md for context injection');
     }
 
     // Layer 3: cross-session FTS5 search via searchConversations() (OB-1025).
-    if (memory) {
+    // Uses remaining history budget after Layer 1
+    const layer1Size = sections.length > 0 ? sections[0]!.length : 0;
+    const crossSessionBudget = Math.max(0, historyBudget - layer1Size);
+
+    if (memory && crossSessionBudget > 0) {
       try {
-        const crossSession = await memory.searchConversations(userMessage, 5);
+        const crossSession = await memory.searchConversations(userMessage, 5, sender);
         const relevant = crossSession.filter((e) => e.role === 'user' || e.role === 'master');
         if (relevant.length > 0) {
           const lines = relevant.map((e) => {
@@ -337,7 +678,11 @@ export class PromptContextBuilder {
             const snippet = e.content.length > 500 ? e.content.slice(0, 500) + '…' : e.content;
             return dateStr ? `[${dateStr}] ${label}: ${snippet}` : `${label}: ${snippet}`;
           });
-          sections.push('## Related past conversations:\n' + lines.join('\n'));
+          let crossSection = '## Related past conversations:\n' + lines.join('\n');
+          if (crossSection.length > crossSessionBudget) {
+            crossSection = crossSection.slice(0, crossSessionBudget);
+          }
+          sections.push(crossSection);
         }
       } catch (err) {
         logger.warn(

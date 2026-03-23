@@ -32,6 +32,10 @@ export interface ModelEntry {
   tier: ModelTier;
   /** Provider name (e.g. 'claude', 'codex', 'aider') */
   provider: string;
+  /** Model context window size in tokens (optional — Claude-specific) */
+  contextTokens?: number;
+  /** Maximum output tokens the model can produce (optional — Claude-specific) */
+  maxOutputTokens?: number;
 }
 
 /** Tier-based fallback chain: powerful → balanced → fast → (none) */
@@ -46,9 +50,27 @@ export const TIER_FALLBACK: Record<ModelTier, ModelTier | undefined> = {
 /** Built-in model maps for known providers */
 const DEFAULT_MODEL_MAPS: Record<string, ModelEntry[]> = {
   claude: [
-    { id: 'haiku', tier: 'fast', provider: 'claude' },
-    { id: 'sonnet', tier: 'balanced', provider: 'claude' },
-    { id: 'opus', tier: 'powerful', provider: 'claude' },
+    {
+      id: 'haiku',
+      tier: 'fast',
+      provider: 'claude',
+      contextTokens: 200_000,
+      maxOutputTokens: 64_000,
+    },
+    {
+      id: 'sonnet',
+      tier: 'balanced',
+      provider: 'claude',
+      contextTokens: 1_000_000,
+      maxOutputTokens: 64_000,
+    },
+    {
+      id: 'opus',
+      tier: 'powerful',
+      provider: 'claude',
+      contextTokens: 1_000_000,
+      maxOutputTokens: 128_000,
+    },
   ],
   codex: [
     // ChatGPT-account auth only supports gpt-5.2-codex (the default).
@@ -56,12 +78,13 @@ const DEFAULT_MODEL_MAPS: Record<string, ModelEntry[]> = {
     // All tiers map to the same model until Codex expands ChatGPT-auth model support.
     { id: 'gpt-5.2-codex', tier: 'fast', provider: 'codex' },
     { id: 'gpt-5.2-codex', tier: 'balanced', provider: 'codex' },
-    { id: 'gpt-5.2-codex', tier: 'powerful', provider: 'codex' },
+    // gpt-5.3-codex is 25% faster at the same pricing as gpt-5.2-codex.
+    { id: 'gpt-5.3-codex', tier: 'powerful', provider: 'codex' },
   ],
   aider: [
     { id: 'gpt-4o-mini', tier: 'fast', provider: 'aider' },
-    { id: 'gpt-4o', tier: 'balanced', provider: 'aider' },
-    { id: 'o1', tier: 'powerful', provider: 'aider' },
+    { id: 'gpt-4.1', tier: 'balanced', provider: 'aider' },
+    { id: 'o3', tier: 'powerful', provider: 'aider' },
   ],
 };
 

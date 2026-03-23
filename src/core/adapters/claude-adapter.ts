@@ -25,6 +25,7 @@ import { createLogger } from '../logger.js';
 import { sanitizeEnv } from '../env-sanitizer.js';
 import { SecurityConfigSchema } from '../../types/config.js';
 import type { SecurityConfig } from '../../types/config.js';
+import { getClaudePromptBudget } from './claude-budget.js';
 
 const logger = createLogger('claude-adapter');
 
@@ -82,7 +83,9 @@ export class ClaudeAdapter implements CLIAdapter {
     // Place the prompt BEFORE --allowedTools. Commander.js parses the first
     // positional argument as the prompt. --allowedTools is variadic (<tools...>)
     // and would consume a trailing prompt as a tool name.
-    args.push(sanitizePrompt(opts.prompt, this.getPromptBudget(opts.model).maxPromptChars));
+    args.push(
+      sanitizePrompt(opts.prompt, this.getPromptBudget(opts.model).maxPromptChars, 'worker'),
+    );
 
     if (opts.allowedTools && opts.allowedTools.length > 0) {
       for (const tool of opts.allowedTools) {
@@ -90,14 +93,20 @@ export class ClaudeAdapter implements CLIAdapter {
       }
     }
 
+    // NOTE: Workspace boundary is enforced via spawn({ cwd: workspacePath }) in agent-runner.ts,
+    // not via CLI flags. Claude CLI does not support --cwd.
+
     return {
       binary: 'claude',
       args,
-      env: this.cleanEnv({ ...process.env }),
+      env: this.cleanEnv({ ...process.env }, opts.securityConfig?.trustLevel),
     };
   }
 
-  cleanEnv(env: Record<string, string | undefined>): Record<string, string | undefined> {
+  cleanEnv(
+    env: Record<string, string | undefined>,
+    trustLevel?: string,
+  ): Record<string, string | undefined> {
     const cleaned = { ...env };
     for (const key of Object.keys(cleaned)) {
       if (
@@ -108,6 +117,12 @@ export class ClaudeAdapter implements CLIAdapter {
         delete cleaned[key];
       }
     }
+
+    // In trusted mode, remove HOME to prevent agents from reading ~/.ssh, ~/.bashrc, etc.
+    if (trustLevel === 'trusted') {
+      delete cleaned['HOME'];
+    }
+
     return sanitizeEnv(cleaned, this.securityConfig);
   }
 
@@ -143,20 +158,6 @@ export class ClaudeAdapter implements CLIAdapter {
   }
 
   getPromptBudget(model?: string): { maxPromptChars: number; maxSystemPromptChars: number } {
-    // Conservative char-based estimates for Claude models.
-    // All current Claude models (opus, sonnet, haiku) share the same limits:
-    //   - System prompt: 180K chars (~45K tokens at ~4 chars/token)
-    //   - User prompt: 32K chars (~8K tokens)
-    // These are intentionally conservative to leave room for tool outputs and responses.
-    const isHaiku = model != null && /haiku/i.test(model);
-    const isSonnet = model != null && /sonnet/i.test(model);
-    const isOpus = model != null && /opus/i.test(model);
-
-    if (isHaiku || isSonnet || isOpus) {
-      return { maxPromptChars: 32_768, maxSystemPromptChars: 180_000 };
-    }
-
-    // Default for unrecognized or unspecified model — use same conservative limits.
-    return { maxPromptChars: 32_768, maxSystemPromptChars: 180_000 };
+    return getClaudePromptBudget(model);
   }
 }

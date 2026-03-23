@@ -1,0 +1,795 @@
+{
+  "id": "restaurant",
+  "name": "Restaurant",
+  "description": "Restaurant, cafe, food truck, bakery, or catering business — menu management, inventory tracking, daily sales, supplier management, and food cost analysis.",
+  "skillPack": "skill-pack.md",
+  "sampleQueries": [
+    "Add a new menu item: Grilled Salmon, main course, $24.99, food cost $8.50",
+    "What's my food cost percentage this week?",
+    "Show me low-stock inventory items",
+    "Record today's sales: $3,200 revenue, 85 covers",
+    "Add expense: $450 food delivery from Fresh Foods Inc",
+    "86 the lobster bisque",
+    "Generate a prep list for tomorrow",
+    "Which menu items have a food cost above 35%?",
+    "Show me this week's expenses by category",
+    "Add a new supplier: Ocean Fresh Seafood, contact@oceanfresh.com, net-30 terms"
+  ],
+  "doctypes": [
+    {
+      "doctype": {
+        "name": "menu-item",
+        "label_singular": "Menu Item",
+        "label_plural": "Menu Items",
+        "icon": "utensils",
+        "table_name": "dt_menu_items",
+        "source": "template"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "label": "Item Name",
+          "field_type": "text",
+          "required": true,
+          "searchable": true,
+          "sort_order": 0
+        },
+        {
+          "name": "category",
+          "label": "Category",
+          "field_type": "select",
+          "required": true,
+          "sort_order": 1,
+          "options": ["appetizer", "main", "dessert", "beverage", "side"]
+        },
+        {
+          "name": "description",
+          "label": "Description",
+          "field_type": "longtext",
+          "sort_order": 2
+        },
+        {
+          "name": "price",
+          "label": "Menu Price",
+          "field_type": "currency",
+          "required": true,
+          "sort_order": 3
+        },
+        { "name": "cost", "label": "Food Cost", "field_type": "currency", "sort_order": 4 },
+        {
+          "name": "food_cost_pct",
+          "label": "Food Cost %",
+          "field_type": "number",
+          "sort_order": 5,
+          "formula": "(cost / price) * 100",
+          "depends_on": "cost,price"
+        },
+        {
+          "name": "allergens",
+          "label": "Allergens",
+          "field_type": "multiselect",
+          "sort_order": 6,
+          "options": ["gluten", "dairy", "nuts", "shellfish", "eggs", "soy", "fish"]
+        },
+        { "name": "image_url", "label": "Photo", "field_type": "image", "sort_order": 7 },
+        {
+          "name": "is_vegetarian",
+          "label": "Vegetarian",
+          "field_type": "checkbox",
+          "sort_order": 8
+        },
+        { "name": "is_vegan", "label": "Vegan", "field_type": "checkbox", "sort_order": 9 }
+      ],
+      "states": [
+        {
+          "name": "available",
+          "label": "Available",
+          "color": "green",
+          "is_initial": true,
+          "sort_order": 0
+        },
+        { "name": "unavailable", "label": "Unavailable (86'd)", "color": "red", "sort_order": 1 },
+        { "name": "seasonal", "label": "Seasonal", "color": "orange", "sort_order": 2 },
+        {
+          "name": "discontinued",
+          "label": "Discontinued",
+          "color": "gray",
+          "is_terminal": true,
+          "sort_order": 3
+        }
+      ],
+      "transitions": [
+        {
+          "from_state": "available",
+          "to_state": "unavailable",
+          "action_name": "mark_unavailable",
+          "action_label": "86 Item"
+        },
+        {
+          "from_state": "unavailable",
+          "to_state": "available",
+          "action_name": "mark_available",
+          "action_label": "Bring Back"
+        },
+        {
+          "from_state": "available",
+          "to_state": "seasonal",
+          "action_name": "mark_seasonal",
+          "action_label": "Mark Seasonal"
+        },
+        {
+          "from_state": "seasonal",
+          "to_state": "available",
+          "action_name": "activate",
+          "action_label": "Activate"
+        },
+        {
+          "from_state": "available",
+          "to_state": "discontinued",
+          "action_name": "discontinue",
+          "action_label": "Discontinue"
+        },
+        {
+          "from_state": "unavailable",
+          "to_state": "discontinued",
+          "action_name": "discontinue",
+          "action_label": "Discontinue"
+        }
+      ],
+      "hooks": [
+        {
+          "event": "after_insert",
+          "action_type": "send_notification",
+          "action_config": {
+            "message": "New menu item added: {{name}} ({{category}}) — ${{price}}"
+          }
+        }
+      ],
+      "relations": []
+    },
+    {
+      "doctype": {
+        "name": "supplier",
+        "label_singular": "Supplier",
+        "label_plural": "Suppliers",
+        "icon": "truck",
+        "table_name": "dt_suppliers",
+        "source": "template"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "label": "Company Name",
+          "field_type": "text",
+          "required": true,
+          "searchable": true,
+          "sort_order": 0
+        },
+        {
+          "name": "contact_name",
+          "label": "Contact Person",
+          "field_type": "text",
+          "sort_order": 1
+        },
+        { "name": "email", "label": "Email", "field_type": "email", "sort_order": 2 },
+        { "name": "phone", "label": "Phone", "field_type": "phone", "sort_order": 3 },
+        {
+          "name": "categories",
+          "label": "Product Categories",
+          "field_type": "multiselect",
+          "sort_order": 4,
+          "options": [
+            "produce",
+            "meat",
+            "seafood",
+            "dairy",
+            "dry-goods",
+            "beverages",
+            "equipment",
+            "cleaning"
+          ]
+        },
+        {
+          "name": "payment_terms",
+          "label": "Payment Terms",
+          "field_type": "select",
+          "sort_order": 5,
+          "options": ["cod", "net-15", "net-30", "net-60"]
+        },
+        {
+          "name": "delivery_days",
+          "label": "Delivery Days",
+          "field_type": "multiselect",
+          "sort_order": 6,
+          "options": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+        },
+        {
+          "name": "min_order",
+          "label": "Minimum Order",
+          "field_type": "currency",
+          "sort_order": 7
+        },
+        { "name": "notes", "label": "Notes", "field_type": "longtext", "sort_order": 8 }
+      ],
+      "states": [
+        {
+          "name": "active",
+          "label": "Active",
+          "color": "green",
+          "is_initial": true,
+          "sort_order": 0
+        },
+        { "name": "on_hold", "label": "On Hold", "color": "orange", "sort_order": 1 },
+        {
+          "name": "inactive",
+          "label": "Inactive",
+          "color": "gray",
+          "is_terminal": true,
+          "sort_order": 2
+        }
+      ],
+      "transitions": [
+        {
+          "from_state": "active",
+          "to_state": "on_hold",
+          "action_name": "pause",
+          "action_label": "Put On Hold"
+        },
+        {
+          "from_state": "on_hold",
+          "to_state": "active",
+          "action_name": "reactivate",
+          "action_label": "Reactivate"
+        },
+        {
+          "from_state": "active",
+          "to_state": "inactive",
+          "action_name": "deactivate",
+          "action_label": "Deactivate"
+        },
+        {
+          "from_state": "on_hold",
+          "to_state": "inactive",
+          "action_name": "deactivate",
+          "action_label": "Deactivate"
+        }
+      ],
+      "hooks": [],
+      "relations": []
+    },
+    {
+      "doctype": {
+        "name": "inventory-item",
+        "label_singular": "Inventory Item",
+        "label_plural": "Inventory Items",
+        "icon": "box",
+        "table_name": "dt_inventory_items",
+        "source": "template"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "label": "Item Name",
+          "field_type": "text",
+          "required": true,
+          "searchable": true,
+          "sort_order": 0
+        },
+        {
+          "name": "category",
+          "label": "Category",
+          "field_type": "select",
+          "required": true,
+          "sort_order": 1,
+          "options": [
+            "produce",
+            "meat",
+            "seafood",
+            "dairy",
+            "dry-goods",
+            "beverages",
+            "cleaning",
+            "packaging"
+          ]
+        },
+        {
+          "name": "unit",
+          "label": "Unit",
+          "field_type": "select",
+          "required": true,
+          "sort_order": 2,
+          "options": ["kg", "lb", "liter", "gallon", "each", "case", "bag", "box"]
+        },
+        {
+          "name": "current_stock",
+          "label": "Current Stock",
+          "field_type": "number",
+          "required": true,
+          "sort_order": 3
+        },
+        {
+          "name": "reorder_point",
+          "label": "Reorder Point",
+          "field_type": "number",
+          "sort_order": 4
+        },
+        {
+          "name": "reorder_qty",
+          "label": "Reorder Quantity",
+          "field_type": "number",
+          "sort_order": 5
+        },
+        { "name": "unit_cost", "label": "Unit Cost", "field_type": "currency", "sort_order": 6 },
+        {
+          "name": "supplier_id",
+          "label": "Supplier",
+          "field_type": "link",
+          "sort_order": 7,
+          "link_doctype": "supplier"
+        },
+        {
+          "name": "storage_location",
+          "label": "Storage Location",
+          "field_type": "select",
+          "sort_order": 8,
+          "options": ["walk-in-cooler", "freezer", "dry-storage", "bar", "prep-station"]
+        },
+        { "name": "expiry_date", "label": "Expiry Date", "field_type": "date", "sort_order": 9 },
+        { "name": "last_ordered", "label": "Last Ordered", "field_type": "date", "sort_order": 10 }
+      ],
+      "states": [
+        {
+          "name": "in_stock",
+          "label": "In Stock",
+          "color": "green",
+          "is_initial": true,
+          "sort_order": 0
+        },
+        { "name": "low_stock", "label": "Low Stock", "color": "orange", "sort_order": 1 },
+        { "name": "out_of_stock", "label": "Out of Stock", "color": "red", "sort_order": 2 },
+        {
+          "name": "discontinued",
+          "label": "Discontinued",
+          "color": "gray",
+          "is_terminal": true,
+          "sort_order": 3
+        }
+      ],
+      "transitions": [
+        {
+          "from_state": "in_stock",
+          "to_state": "low_stock",
+          "action_name": "flag_low",
+          "action_label": "Flag Low Stock"
+        },
+        {
+          "from_state": "low_stock",
+          "to_state": "in_stock",
+          "action_name": "restock",
+          "action_label": "Restock"
+        },
+        {
+          "from_state": "low_stock",
+          "to_state": "out_of_stock",
+          "action_name": "deplete",
+          "action_label": "Mark Out of Stock"
+        },
+        {
+          "from_state": "out_of_stock",
+          "to_state": "in_stock",
+          "action_name": "restock",
+          "action_label": "Restock"
+        },
+        {
+          "from_state": "in_stock",
+          "to_state": "discontinued",
+          "action_name": "discontinue",
+          "action_label": "Discontinue"
+        }
+      ],
+      "hooks": [
+        {
+          "event": "after_update",
+          "action_type": "run_workflow",
+          "action_config": {
+            "workflow": "low-stock-alert",
+            "condition": "current_stock <= reorder_point"
+          }
+        }
+      ],
+      "relations": [
+        {
+          "from_doctype": "inventory-item",
+          "to_doctype": "supplier",
+          "relation_type": "belongs_to",
+          "from_field": "supplier_id",
+          "to_field": "id",
+          "label": "Supplied by"
+        }
+      ]
+    },
+    {
+      "doctype": {
+        "name": "daily-sales",
+        "label_singular": "Daily Sales Record",
+        "label_plural": "Daily Sales Records",
+        "icon": "chart-bar",
+        "table_name": "dt_daily_sales",
+        "source": "template"
+      },
+      "fields": [
+        {
+          "name": "date",
+          "label": "Date",
+          "field_type": "date",
+          "required": true,
+          "searchable": true,
+          "sort_order": 0
+        },
+        {
+          "name": "total_revenue",
+          "label": "Total Revenue",
+          "field_type": "currency",
+          "required": true,
+          "sort_order": 1
+        },
+        {
+          "name": "covers",
+          "label": "Covers (Customers)",
+          "field_type": "number",
+          "sort_order": 2
+        },
+        {
+          "name": "avg_per_cover",
+          "label": "Avg Revenue / Cover",
+          "field_type": "currency",
+          "sort_order": 3,
+          "formula": "total_revenue / covers",
+          "depends_on": "total_revenue,covers"
+        },
+        {
+          "name": "food_revenue",
+          "label": "Food Revenue",
+          "field_type": "currency",
+          "sort_order": 4
+        },
+        {
+          "name": "beverage_revenue",
+          "label": "Beverage Revenue",
+          "field_type": "currency",
+          "sort_order": 5
+        },
+        {
+          "name": "top_items",
+          "label": "Top Selling Items",
+          "field_type": "longtext",
+          "sort_order": 6
+        },
+        {
+          "name": "weather",
+          "label": "Weather",
+          "field_type": "select",
+          "sort_order": 7,
+          "options": ["sunny", "cloudy", "rainy", "snowy", "hot", "cold"]
+        },
+        {
+          "name": "special_event",
+          "label": "Special Event",
+          "field_type": "text",
+          "sort_order": 8
+        },
+        { "name": "notes", "label": "Notes", "field_type": "longtext", "sort_order": 9 }
+      ],
+      "states": [
+        { "name": "draft", "label": "Draft", "color": "gray", "is_initial": true, "sort_order": 0 },
+        {
+          "name": "confirmed",
+          "label": "Confirmed",
+          "color": "green",
+          "is_terminal": true,
+          "sort_order": 1
+        }
+      ],
+      "transitions": [
+        {
+          "from_state": "draft",
+          "to_state": "confirmed",
+          "action_name": "confirm",
+          "action_label": "Confirm Sales"
+        }
+      ],
+      "hooks": [
+        {
+          "event": "after_insert",
+          "action_type": "send_notification",
+          "action_config": {
+            "message": "Daily sales recorded: ${{total_revenue}} revenue, {{covers}} covers on {{date}}"
+          }
+        }
+      ],
+      "relations": []
+    },
+    {
+      "doctype": {
+        "name": "expense",
+        "label_singular": "Expense",
+        "label_plural": "Expenses",
+        "icon": "receipt",
+        "table_name": "dt_expenses",
+        "source": "template"
+      },
+      "fields": [
+        {
+          "name": "date",
+          "label": "Date",
+          "field_type": "date",
+          "required": true,
+          "searchable": true,
+          "sort_order": 0
+        },
+        {
+          "name": "category",
+          "label": "Category",
+          "field_type": "select",
+          "required": true,
+          "sort_order": 1,
+          "options": ["food", "labor", "rent", "utilities", "equipment", "marketing", "other"]
+        },
+        {
+          "name": "description",
+          "label": "Description",
+          "field_type": "text",
+          "required": true,
+          "searchable": true,
+          "sort_order": 2
+        },
+        {
+          "name": "amount",
+          "label": "Amount",
+          "field_type": "currency",
+          "required": true,
+          "sort_order": 3
+        },
+        {
+          "name": "supplier_id",
+          "label": "Supplier",
+          "field_type": "link",
+          "sort_order": 4,
+          "link_doctype": "supplier"
+        },
+        {
+          "name": "receipt_image",
+          "label": "Receipt Photo",
+          "field_type": "image",
+          "sort_order": 5
+        },
+        { "name": "notes", "label": "Notes", "field_type": "longtext", "sort_order": 6 }
+      ],
+      "states": [
+        {
+          "name": "pending",
+          "label": "Pending",
+          "color": "orange",
+          "is_initial": true,
+          "sort_order": 0
+        },
+        { "name": "paid", "label": "Paid", "color": "green", "sort_order": 1 },
+        { "name": "overdue", "label": "Overdue", "color": "red", "sort_order": 2 },
+        {
+          "name": "cancelled",
+          "label": "Cancelled",
+          "color": "gray",
+          "is_terminal": true,
+          "sort_order": 3
+        }
+      ],
+      "transitions": [
+        {
+          "from_state": "pending",
+          "to_state": "paid",
+          "action_name": "mark_paid",
+          "action_label": "Mark as Paid"
+        },
+        {
+          "from_state": "pending",
+          "to_state": "overdue",
+          "action_name": "flag_overdue",
+          "action_label": "Flag Overdue"
+        },
+        {
+          "from_state": "overdue",
+          "to_state": "paid",
+          "action_name": "mark_paid",
+          "action_label": "Mark as Paid"
+        },
+        {
+          "from_state": "pending",
+          "to_state": "cancelled",
+          "action_name": "cancel",
+          "action_label": "Cancel"
+        }
+      ],
+      "hooks": [
+        {
+          "event": "on_state_change",
+          "action_type": "send_notification",
+          "action_config": {
+            "condition": "new_state == 'overdue'",
+            "message": "Expense overdue: {{description}} — ${{amount}} ({{category}})"
+          }
+        }
+      ],
+      "relations": [
+        {
+          "from_doctype": "expense",
+          "to_doctype": "supplier",
+          "relation_type": "belongs_to",
+          "from_field": "supplier_id",
+          "to_field": "id",
+          "label": "Paid to"
+        }
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "name": "Low Stock Alert",
+      "description": "Checks inventory items daily and sends an alert for any items at or below their reorder point.",
+      "trigger": {
+        "type": "schedule",
+        "cron": "0 6 * * *"
+      },
+      "steps": [
+        {
+          "id": "query-low-stock",
+          "name": "Find low-stock items",
+          "type": "query",
+          "config": {
+            "doctype": "inventory-item",
+            "filter": "current_stock <= reorder_point",
+            "fields": ["name", "current_stock", "reorder_point", "unit", "supplier_id"]
+          },
+          "sort_order": 0
+        },
+        {
+          "id": "check-has-items",
+          "name": "Check if any items are low",
+          "type": "condition",
+          "config": {
+            "expression": "results.length > 0",
+            "on_false": "skip_remaining"
+          },
+          "sort_order": 1
+        },
+        {
+          "id": "format-alert",
+          "name": "Format alert message",
+          "type": "transform",
+          "config": {
+            "template": "Low Stock Alert:\n{{#each results}}\n- {{name}}: {{current_stock}} {{unit}} (reorder at {{reorder_point}})\n{{/each}}"
+          },
+          "sort_order": 2
+        },
+        {
+          "id": "send-alert",
+          "name": "Send low-stock notification",
+          "type": "send",
+          "config": {
+            "channel": "default",
+            "message": "{{formatted_output}}"
+          },
+          "sort_order": 3
+        }
+      ],
+      "status": "active"
+    },
+    {
+      "name": "Daily Prep List",
+      "description": "Generates a daily prep list each morning based on available menu items and inventory levels.",
+      "trigger": {
+        "type": "schedule",
+        "cron": "0 5 * * *"
+      },
+      "steps": [
+        {
+          "id": "get-menu-items",
+          "name": "Get available menu items",
+          "type": "query",
+          "config": {
+            "doctype": "menu-item",
+            "filter": "status = 'available'",
+            "fields": ["name", "category"]
+          },
+          "sort_order": 0
+        },
+        {
+          "id": "get-inventory",
+          "name": "Get current inventory levels",
+          "type": "query",
+          "config": {
+            "doctype": "inventory-item",
+            "filter": "status != 'discontinued'",
+            "fields": ["name", "current_stock", "unit", "storage_location"]
+          },
+          "sort_order": 1
+        },
+        {
+          "id": "generate-prep-list",
+          "name": "AI generates prep list",
+          "type": "ai",
+          "config": {
+            "prompt": "Based on the available menu items and current inventory levels, generate a prioritized prep list for today. Group by station (cold prep, hot prep, pastry, bar). Flag any items with low inventory that may need substitution.",
+            "tool_profile": "read-only",
+            "max_turns": 3
+          },
+          "sort_order": 2
+        },
+        {
+          "id": "send-prep-list",
+          "name": "Send prep list",
+          "type": "send",
+          "config": {
+            "channel": "default",
+            "message": "Daily Prep List:\n{{ai_output}}"
+          },
+          "sort_order": 3
+        }
+      ],
+      "status": "active"
+    },
+    {
+      "name": "Weekly Food Cost Report",
+      "description": "Calculates and sends a weekly food cost analysis every Monday morning, comparing food expenses against food revenue.",
+      "trigger": {
+        "type": "schedule",
+        "cron": "0 8 * * 1"
+      },
+      "steps": [
+        {
+          "id": "get-weekly-sales",
+          "name": "Get last 7 days of sales",
+          "type": "query",
+          "config": {
+            "doctype": "daily-sales",
+            "filter": "date >= date('now', '-7 days')",
+            "fields": ["date", "total_revenue", "food_revenue", "covers"]
+          },
+          "sort_order": 0
+        },
+        {
+          "id": "get-weekly-expenses",
+          "name": "Get last 7 days of food expenses",
+          "type": "query",
+          "config": {
+            "doctype": "expense",
+            "filter": "date >= date('now', '-7 days') AND category = 'food'",
+            "fields": ["date", "amount", "description"]
+          },
+          "sort_order": 1
+        },
+        {
+          "id": "calculate-food-cost",
+          "name": "AI analyzes food cost",
+          "type": "ai",
+          "config": {
+            "prompt": "Analyze the weekly food cost data. Calculate: (1) Total food revenue, (2) Total food expenses, (3) Food cost percentage (expenses / revenue x 100), (4) Average revenue per cover, (5) Comparison against the 28-35% target range. Highlight any concerning trends and suggest specific actions if food cost is above target.",
+            "tool_profile": "read-only",
+            "max_turns": 3
+          },
+          "sort_order": 2
+        },
+        {
+          "id": "send-report",
+          "name": "Send weekly food cost report",
+          "type": "send",
+          "config": {
+            "channel": "default",
+            "message": "Weekly Food Cost Report:\n{{ai_output}}"
+          },
+          "sort_order": 3
+        }
+      ],
+      "status": "active"
+    }
+  ]
+}

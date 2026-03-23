@@ -83,7 +83,7 @@ vi.mock('node:child_process', () => ({
 // ── Import AFTER mocking ─────────────────────────────────────────────────────
 
 // Dynamic import is used so the vi.mock() above is hoisted first.
-const { DockerSandbox, cleanupSandboxContainers } =
+const { DockerSandbox, cleanupSandboxContainers, DockerHealthMonitor } =
   await import('../../src/core/docker-sandbox.js');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -525,5 +525,105 @@ describe('DockerSandbox container crash-cleanup tracking (OB-1686)', () => {
     // No docker rm calls should have been made
     const rmCalls = allCapturedArgs.filter((args) => args[0] === 'rm');
     expect(rmCalls).toHaveLength(0);
+  });
+});
+
+// ── OB-1611: DockerHealthMonitor state transition logging ──────────────────────
+
+describe('DockerHealthMonitor — state transition logging (OB-F215 / OB-1611)', () => {
+  beforeEach(() => {
+    capturedArgs = [];
+    allCapturedArgs = [];
+    mockError = null;
+    mockResponseQueue = [];
+  });
+
+  it('first check with Docker unavailable transitions from unavailable state', async () => {
+    const sandbox = new DockerSandbox();
+    const monitor = new DockerHealthMonitor(sandbox, 5 * 60 * 1000);
+
+    // Initial state: unavailable (default, line 178 in docker-sandbox.ts)
+    expect(monitor.isDockerAvailable()).toBe(false);
+
+    // First check: Docker is unavailable
+    mockResponseQueue = [{ error: Object.assign(new Error('Cannot connect'), { code: 1 }) }];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+    await (monitor as any)._check();
+
+    // Monitor should still show unavailable after first check
+    // (wasAvailable was false, available is false, so condition at line 230 matches)
+    expect(monitor.isDockerAvailable()).toBe(false);
+  });
+
+  it('second consecutive check with Docker still unavailable does not transition', async () => {
+    const sandbox = new DockerSandbox();
+    const monitor = new DockerHealthMonitor(sandbox, 5 * 60 * 1000);
+
+    // Manually set to unavailable (simulating first check already happened)
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    (monitor as any).available = false;
+
+    // Second check: Docker is still unavailable
+    mockResponseQueue = [{ error: Object.assign(new Error('Cannot connect'), { code: 1 }) }];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+    await (monitor as any)._check();
+
+    // Monitor should still show unavailable
+    // (wasAvailable was false, available becomes false, so condition at line 230 matches: !available && !wasAvailable)
+    expect(monitor.isDockerAvailable()).toBe(false);
+  });
+
+  it('check with Docker becomes available after being unavailable transitions to available', async () => {
+    const sandbox = new DockerSandbox();
+    const monitor = new DockerHealthMonitor(sandbox, 5 * 60 * 1000);
+
+    // Set state: Docker was unavailable
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    (monitor as any).available = false;
+
+    // Check: Docker is now available
+    mockResponseQueue = [{ stdout: 'Docker info output' }];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+    await (monitor as any)._check();
+
+    // Monitor should now show available
+    // (wasAvailable was false, available becomes true, so condition at line 233 matches: !wasAvailable && available)
+    expect(monitor.isDockerAvailable()).toBe(true);
+  });
+
+  it('check with Docker available after previously available does not transition', async () => {
+    const sandbox = new DockerSandbox();
+    const monitor = new DockerHealthMonitor(sandbox, 5 * 60 * 1000);
+
+    // Set state: Docker was available
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    (monitor as any).available = true;
+
+    // Check: Docker is still available
+    mockResponseQueue = [{ stdout: 'Docker info output' }];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+    await (monitor as any)._check();
+
+    // Monitor should still show available
+    // (wasAvailable was true, available becomes true, so condition at line 236 else block matches)
+    expect(monitor.isDockerAvailable()).toBe(true);
+  });
+
+  it('transitions from available to unavailable', async () => {
+    const sandbox = new DockerSandbox();
+    const monitor = new DockerHealthMonitor(sandbox, 5 * 60 * 1000);
+
+    // Set state: Docker was available
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    (monitor as any).available = true;
+
+    // Check: Docker is now unavailable
+    mockResponseQueue = [{ error: Object.assign(new Error('Cannot connect'), { code: 1 }) }];
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+    await (monitor as any)._check();
+
+    // Monitor should now show unavailable
+    // (wasAvailable was true, available becomes false, so condition at line 225 matches: !available && wasAvailable)
+    expect(monitor.isDockerAvailable()).toBe(false);
   });
 });

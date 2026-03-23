@@ -65,7 +65,10 @@ async function main() {
   const scriptTag = html.match(/<script\s+src="js\/app\.js"\s+type="module"><\/script>/);
   if (scriptTag) {
     const idx = html.indexOf(scriptTag[0]);
-    html = html.slice(0, idx) + `<script>\n${bundledJs}\n</script>` + html.slice(idx + scriptTag[0].length);
+    html =
+      html.slice(0, idx) +
+      `<script>\n${bundledJs}\n</script>` +
+      html.slice(idx + scriptTag[0].length);
   }
 
   // 7. Escape backticks and template literal markers for embedding in TS template literal

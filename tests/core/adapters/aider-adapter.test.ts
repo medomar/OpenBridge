@@ -180,3 +180,44 @@ describe('AiderAdapter.name', () => {
     expect(adapter.name).toBe('aider');
   });
 });
+
+// ── getPromptBudget ──────────────────────────────────────────────────
+
+describe('AiderAdapter.getPromptBudget', () => {
+  it('returns 400_000 for gpt-4.1 (1M token context window)', () => {
+    const budget = adapter.getPromptBudget('gpt-4.1');
+    expect(budget.maxPromptChars).toBe(400_000);
+    expect(budget.maxSystemPromptChars).toBe(400_000);
+  });
+
+  it('returns 200_000 for o3 (200K token context window)', () => {
+    const budget = adapter.getPromptBudget('o3');
+    expect(budget.maxPromptChars).toBe(200_000);
+    expect(budget.maxSystemPromptChars).toBe(200_000);
+  });
+
+  it('returns 200_000 for o4-mini', () => {
+    const budget = adapter.getPromptBudget('o4-mini');
+    expect(budget.maxPromptChars).toBe(200_000);
+    expect(budget.maxSystemPromptChars).toBe(200_000);
+  });
+
+  it('returns 100_000 default for unknown/unspecified model', () => {
+    const budget = adapter.getPromptBudget();
+    expect(budget.maxPromptChars).toBe(100_000);
+    expect(budget.maxSystemPromptChars).toBe(100_000);
+  });
+
+  it('returns 100_000 default for unrecognized model string', () => {
+    const budget = adapter.getPromptBudget('deepseek-chat');
+    expect(budget.maxPromptChars).toBe(100_000);
+    expect(budget.maxSystemPromptChars).toBe(100_000);
+  });
+
+  it('both fields are equal (single combined pool — system + user merged into --message)', () => {
+    for (const model of ['gpt-4.1', 'o3', 'gpt-4o-mini', undefined]) {
+      const budget = adapter.getPromptBudget(model);
+      expect(budget.maxPromptChars).toBe(budget.maxSystemPromptChars);
+    }
+  });
+});

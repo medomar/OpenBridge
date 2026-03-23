@@ -63,7 +63,7 @@ describe('Per-tool model resolution via ModelRegistry', () => {
     const codexRegistry = createModelRegistry('codex');
     expect(codexRegistry.resolveModelOrTier('haiku')).toBe('gpt-5.2-codex');
     expect(codexRegistry.resolveModelOrTier('sonnet')).toBe('gpt-5.2-codex');
-    expect(codexRegistry.resolveModelOrTier('opus')).toBe('gpt-5.2-codex');
+    expect(codexRegistry.resolveModelOrTier('opus')).toBe('gpt-5.3-codex');
 
     // "gpt-5.2-codex" is Codex's fast model → claude registry should resolve to "haiku"
     const claudeRegistry = createModelRegistry('claude');
@@ -76,13 +76,13 @@ describe('Per-tool model resolution via ModelRegistry', () => {
   it('resolves "balanced" to provider-specific models', () => {
     expect(createModelRegistry('claude').resolveModelOrTier('balanced')).toBe('sonnet');
     expect(createModelRegistry('codex').resolveModelOrTier('balanced')).toBe('gpt-5.2-codex');
-    expect(createModelRegistry('aider').resolveModelOrTier('balanced')).toBe('gpt-4o');
+    expect(createModelRegistry('aider').resolveModelOrTier('balanced')).toBe('gpt-4.1');
   });
 
   it('resolves "powerful" to provider-specific models', () => {
     expect(createModelRegistry('claude').resolveModelOrTier('powerful')).toBe('opus');
-    expect(createModelRegistry('codex').resolveModelOrTier('powerful')).toBe('gpt-5.2-codex');
-    expect(createModelRegistry('aider').resolveModelOrTier('powerful')).toBe('o1');
+    expect(createModelRegistry('codex').resolveModelOrTier('powerful')).toBe('gpt-5.3-codex');
+    expect(createModelRegistry('aider').resolveModelOrTier('powerful')).toBe('o3');
   });
 });
 

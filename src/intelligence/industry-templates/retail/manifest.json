@@ -1,0 +1,792 @@
+{
+  "id": "retail",
+  "name": "Retail",
+  "description": "Retail store, boutique, online shop, or multi-location retail — product catalog, customer management, sales tracking, purchase orders, and inventory management.",
+  "skillPack": "skill-pack.md",
+  "sampleQueries": [
+    "Add a new product: Blue Denim Jacket, SKU JKT-001, $89.99, cost $32.00, 25 units in stock",
+    "Show me all products with low stock",
+    "Add a new customer: Sarah Johnson, sarah@email.com, VIP member",
+    "Record a sale: Sarah Johnson bought 2x Blue Denim Jacket for $179.98",
+    "Create a purchase order to supplier NordicTextiles for 50x Wool Sweater at $18 each",
+    "What's my best-selling product this week?",
+    "Show me all pending purchase orders",
+    "Which customers haven't purchased in the last 30 days?",
+    "What's my gross margin on the denim jacket line?",
+    "Generate a daily sales report for today"
+  ],
+  "doctypes": [
+    {
+      "doctype": {
+        "name": "product",
+        "label_singular": "Product",
+        "label_plural": "Products",
+        "icon": "tag",
+        "table_name": "dt_products",
+        "source": "template"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "label": "Product Name",
+          "field_type": "text",
+          "required": true,
+          "searchable": true,
+          "sort_order": 0
+        },
+        {
+          "name": "sku",
+          "label": "SKU",
+          "field_type": "text",
+          "required": true,
+          "searchable": true,
+          "sort_order": 1
+        },
+        {
+          "name": "category",
+          "label": "Category",
+          "field_type": "select",
+          "required": true,
+          "sort_order": 2,
+          "options": [
+            "clothing",
+            "footwear",
+            "accessories",
+            "electronics",
+            "home",
+            "beauty",
+            "food",
+            "sports",
+            "toys",
+            "other"
+          ]
+        },
+        {
+          "name": "description",
+          "label": "Description",
+          "field_type": "longtext",
+          "sort_order": 3
+        },
+        {
+          "name": "price",
+          "label": "Selling Price",
+          "field_type": "currency",
+          "required": true,
+          "sort_order": 4
+        },
+        { "name": "cost", "label": "Cost Price", "field_type": "currency", "sort_order": 5 },
+        {
+          "name": "margin_pct",
+          "label": "Gross Margin %",
+          "field_type": "number",
+          "sort_order": 6,
+          "formula": "((price - cost) / price) * 100",
+          "depends_on": "price,cost"
+        },
+        {
+          "name": "stock_qty",
+          "label": "Stock Quantity",
+          "field_type": "number",
+          "required": true,
+          "sort_order": 7
+        },
+        {
+          "name": "reorder_point",
+          "label": "Reorder Point",
+          "field_type": "number",
+          "sort_order": 8
+        },
+        {
+          "name": "reorder_qty",
+          "label": "Reorder Quantity",
+          "field_type": "number",
+          "sort_order": 9
+        },
+        { "name": "barcode", "label": "Barcode", "field_type": "text", "sort_order": 10 },
+        {
+          "name": "brand",
+          "label": "Brand",
+          "field_type": "text",
+          "searchable": true,
+          "sort_order": 11
+        },
+        {
+          "name": "supplier_id",
+          "label": "Supplier",
+          "field_type": "link",
+          "sort_order": 12,
+          "link_doctype": "customer"
+        },
+        { "name": "image_url", "label": "Product Photo", "field_type": "image", "sort_order": 13 },
+        { "name": "tags", "label": "Tags", "field_type": "text", "sort_order": 14 },
+        { "name": "notes", "label": "Notes", "field_type": "longtext", "sort_order": 15 }
+      ],
+      "states": [
+        {
+          "name": "active",
+          "label": "Active",
+          "color": "green",
+          "is_initial": true,
+          "sort_order": 0
+        },
+        { "name": "low_stock", "label": "Low Stock", "color": "orange", "sort_order": 1 },
+        { "name": "out_of_stock", "label": "Out of Stock", "color": "red", "sort_order": 2 },
+        {
+          "name": "discontinued",
+          "label": "Discontinued",
+          "color": "gray",
+          "is_terminal": true,
+          "sort_order": 3
+        }
+      ],
+      "transitions": [
+        {
+          "from_state": "active",
+          "to_state": "low_stock",
+          "action_name": "flag_low",
+          "action_label": "Flag Low Stock"
+        },
+        {
+          "from_state": "low_stock",
+          "to_state": "active",
+          "action_name": "restock",
+          "action_label": "Restock"
+        },
+        {
+          "from_state": "low_stock",
+          "to_state": "out_of_stock",
+          "action_name": "deplete",
+          "action_label": "Mark Out of Stock"
+        },
+        {
+          "from_state": "out_of_stock",
+          "to_state": "active",
+          "action_name": "restock",
+          "action_label": "Restock"
+        },
+        {
+          "from_state": "active",
+          "to_state": "discontinued",
+          "action_name": "discontinue",
+          "action_label": "Discontinue"
+        },
+        {
+          "from_state": "low_stock",
+          "to_state": "discontinued",
+          "action_name": "discontinue",
+          "action_label": "Discontinue"
+        }
+      ],
+      "hooks": [
+        {
+          "event": "after_insert",
+          "action_type": "send_notification",
+          "action_config": {
+            "message": "New product added: {{name}} (SKU: {{sku}}) — ${{price}}, {{stock_qty}} units in stock"
+          }
+        },
+        {
+          "event": "after_update",
+          "action_type": "run_workflow",
+          "action_config": {
+            "workflow": "low-stock-reorder",
+            "condition": "stock_qty <= reorder_point AND stock_qty > 0"
+          }
+        }
+      ],
+      "relations": []
+    },
+    {
+      "doctype": {
+        "name": "customer",
+        "label_singular": "Customer",
+        "label_plural": "Customers",
+        "icon": "user",
+        "table_name": "dt_customers",
+        "source": "template"
+      },
+      "fields": [
+        {
+          "name": "name",
+          "label": "Full Name",
+          "field_type": "text",
+          "required": true,
+          "searchable": true,
+          "sort_order": 0
+        },
+        {
+          "name": "email",
+          "label": "Email",
+          "field_type": "email",
+          "searchable": true,
+          "sort_order": 1
+        },
+        { "name": "phone", "label": "Phone", "field_type": "phone", "sort_order": 2 },
+        {
+          "name": "tier",
+          "label": "Customer Tier",
+          "field_type": "select",
+          "sort_order": 3,
+          "options": ["standard", "silver", "gold", "vip"]
+        },
+        {
+          "name": "total_spent",
+          "label": "Total Lifetime Spend",
+          "field_type": "currency",
+          "sort_order": 4
+        },
+        {
+          "name": "total_orders",
+          "label": "Total Orders",
+          "field_type": "number",
+          "sort_order": 5
+        },
+        {
+          "name": "last_purchase_date",
+          "label": "Last Purchase Date",
+          "field_type": "date",
+          "sort_order": 6
+        },
+        { "name": "address", "label": "Address", "field_type": "text", "sort_order": 7 },
+        { "name": "city", "label": "City", "field_type": "text", "sort_order": 8 },
+        {
+          "name": "date_of_birth",
+          "label": "Date of Birth",
+          "field_type": "date",
+          "sort_order": 9
+        },
+        {
+          "name": "preferred_categories",
+          "label": "Preferred Categories",
+          "field_type": "multiselect",
+          "sort_order": 10,
+          "options": [
+            "clothing",
+            "footwear",
+            "accessories",
+            "electronics",
+            "home",
+            "beauty",
+            "food",
+            "sports",
+            "toys"
+          ]
+        },
+        {
+          "name": "accepts_marketing",
+          "label": "Accepts Marketing",
+          "field_type": "checkbox",
+          "sort_order": 11
+        },
+        { "name": "notes", "label": "Notes", "field_type": "longtext", "sort_order": 12 }
+      ],
+      "states": [
+        {
+          "name": "active",
+          "label": "Active",
+          "color": "green",
+          "is_initial": true,
+          "sort_order": 0
+        },
+        { "name": "at_risk", "label": "At Risk (Inactive)", "color": "orange", "sort_order": 1 },
+        { "name": "churned", "label": "Churned", "color": "red", "sort_order": 2 },
+        {
+          "name": "blocked",
+          "label": "Blocked",
+          "color": "gray",
+          "is_terminal": true,
+          "sort_order": 3
+        }
+      ],
+      "transitions": [
+        {
+          "from_state": "active",
+          "to_state": "at_risk",
+          "action_name": "flag_at_risk",
+          "action_label": "Flag At Risk"
+        },
+        {
+          "from_state": "at_risk",
+          "to_state": "active",
+          "action_name": "reactivate",
+          "action_label": "Reactivate"
+        },
+        {
+          "from_state": "at_risk",
+          "to_state": "churned",
+          "action_name": "mark_churned",
+          "action_label": "Mark Churned"
+        },
+        {
+          "from_state": "churned",
+          "to_state": "active",
+          "action_name": "win_back",
+          "action_label": "Win Back"
+        },
+        {
+          "from_state": "active",
+          "to_state": "blocked",
+          "action_name": "block",
+          "action_label": "Block Customer"
+        }
+      ],
+      "hooks": [
+        {
+          "event": "on_state_change",
+          "action_type": "run_workflow",
+          "action_config": {
+            "condition": "new_state == 'at_risk'",
+            "workflow": "customer-follow-up"
+          }
+        }
+      ],
+      "relations": []
+    },
+    {
+      "doctype": {
+        "name": "sale",
+        "label_singular": "Sale",
+        "label_plural": "Sales",
+        "icon": "shopping-cart",
+        "table_name": "dt_sales",
+        "source": "template"
+      },
+      "fields": [
+        {
+          "name": "date",
+          "label": "Sale Date",
+          "field_type": "date",
+          "required": true,
+          "searchable": true,
+          "sort_order": 0
+        },
+        {
+          "name": "customer_id",
+          "label": "Customer",
+          "field_type": "link",
+          "sort_order": 1,
+          "link_doctype": "customer"
+        },
+        {
+          "name": "items",
+          "label": "Items Sold",
+          "field_type": "longtext",
+          "required": true,
+          "sort_order": 2
+        },
+        {
+          "name": "subtotal",
+          "label": "Subtotal",
+          "field_type": "currency",
+          "required": true,
+          "sort_order": 3
+        },
+        {
+          "name": "discount_amount",
+          "label": "Discount",
+          "field_type": "currency",
+          "sort_order": 4
+        },
+        { "name": "tax_amount", "label": "Tax", "field_type": "currency", "sort_order": 5 },
+        {
+          "name": "total",
+          "label": "Total",
+          "field_type": "currency",
+          "required": true,
+          "sort_order": 6,
+          "formula": "subtotal - discount_amount + tax_amount",
+          "depends_on": "subtotal,discount_amount,tax_amount"
+        },
+        {
+          "name": "payment_method",
+          "label": "Payment Method",
+          "field_type": "select",
+          "required": true,
+          "sort_order": 7,
+          "options": ["cash", "card", "bank-transfer", "online", "gift-card", "store-credit"]
+        },
+        {
+          "name": "channel",
+          "label": "Sales Channel",
+          "field_type": "select",
+          "sort_order": 8,
+          "options": ["in-store", "online", "phone", "marketplace"]
+        },
+        { "name": "staff_name", "label": "Served By", "field_type": "text", "sort_order": 9 },
+        { "name": "notes", "label": "Notes", "field_type": "longtext", "sort_order": 10 }
+      ],
+      "states": [
+        {
+          "name": "completed",
+          "label": "Completed",
+          "color": "green",
+          "is_initial": true,
+          "sort_order": 0
+        },
+        { "name": "refunded", "label": "Refunded", "color": "orange", "sort_order": 1 },
+        {
+          "name": "partially_refunded",
+          "label": "Partially Refunded",
+          "color": "yellow",
+          "sort_order": 2
+        },
+        {
+          "name": "disputed",
+          "label": "Disputed",
+          "color": "red",
+          "is_terminal": true,
+          "sort_order": 3
+        }
+      ],
+      "transitions": [
+        {
+          "from_state": "completed",
+          "to_state": "refunded",
+          "action_name": "refund",
+          "action_label": "Full Refund"
+        },
+        {
+          "from_state": "completed",
+          "to_state": "partially_refunded",
+          "action_name": "partial_refund",
+          "action_label": "Partial Refund"
+        },
+        {
+          "from_state": "completed",
+          "to_state": "disputed",
+          "action_name": "dispute",
+          "action_label": "Flag Dispute"
+        },
+        {
+          "from_state": "partially_refunded",
+          "to_state": "refunded",
+          "action_name": "refund_remaining",
+          "action_label": "Refund Remaining"
+        }
+      ],
+      "hooks": [
+        {
+          "event": "after_insert",
+          "action_type": "send_notification",
+          "action_config": {
+            "message": "Sale recorded: ${{total}} on {{date}} via {{payment_method}}"
+          }
+        }
+      ],
+      "relations": [
+        {
+          "from_doctype": "sale",
+          "to_doctype": "customer",
+          "relation_type": "belongs_to",
+          "from_field": "customer_id",
+          "to_field": "id",
+          "label": "Purchased by"
+        }
+      ]
+    },
+    {
+      "doctype": {
+        "name": "purchase-order",
+        "label_singular": "Purchase Order",
+        "label_plural": "Purchase Orders",
+        "icon": "clipboard",
+        "table_name": "dt_purchase_orders",
+        "source": "template"
+      },
+      "fields": [
+        {
+          "name": "order_number",
+          "label": "Order Number",
+          "field_type": "text",
+          "required": true,
+          "searchable": true,
+          "sort_order": 0
+        },
+        {
+          "name": "supplier_name",
+          "label": "Supplier Name",
+          "field_type": "text",
+          "required": true,
+          "searchable": true,
+          "sort_order": 1
+        },
+        {
+          "name": "supplier_email",
+          "label": "Supplier Email",
+          "field_type": "email",
+          "sort_order": 2
+        },
+        {
+          "name": "order_date",
+          "label": "Order Date",
+          "field_type": "date",
+          "required": true,
+          "sort_order": 3
+        },
+        {
+          "name": "expected_delivery",
+          "label": "Expected Delivery",
+          "field_type": "date",
+          "sort_order": 4
+        },
+        {
+          "name": "items",
+          "label": "Items Ordered",
+          "field_type": "longtext",
+          "required": true,
+          "sort_order": 5
+        },
+        {
+          "name": "total_amount",
+          "label": "Total Amount",
+          "field_type": "currency",
+          "required": true,
+          "sort_order": 6
+        },
+        {
+          "name": "payment_terms",
+          "label": "Payment Terms",
+          "field_type": "select",
+          "sort_order": 7,
+          "options": ["cod", "net-15", "net-30", "net-60", "prepaid"]
+        },
+        {
+          "name": "delivery_address",
+          "label": "Delivery Address",
+          "field_type": "text",
+          "sort_order": 8
+        },
+        {
+          "name": "tracking_number",
+          "label": "Tracking Number",
+          "field_type": "text",
+          "sort_order": 9
+        },
+        {
+          "name": "invoice_number",
+          "label": "Supplier Invoice #",
+          "field_type": "text",
+          "sort_order": 10
+        },
+        { "name": "notes", "label": "Notes", "field_type": "longtext", "sort_order": 11 }
+      ],
+      "states": [
+        { "name": "draft", "label": "Draft", "color": "gray", "is_initial": true, "sort_order": 0 },
+        { "name": "sent", "label": "Sent to Supplier", "color": "blue", "sort_order": 1 },
+        {
+          "name": "confirmed",
+          "label": "Confirmed by Supplier",
+          "color": "purple",
+          "sort_order": 2
+        },
+        { "name": "in_transit", "label": "In Transit", "color": "orange", "sort_order": 3 },
+        { "name": "received", "label": "Received", "color": "green", "sort_order": 4 },
+        {
+          "name": "cancelled",
+          "label": "Cancelled",
+          "color": "red",
+          "is_terminal": true,
+          "sort_order": 5
+        }
+      ],
+      "transitions": [
+        {
+          "from_state": "draft",
+          "to_state": "sent",
+          "action_name": "send_order",
+          "action_label": "Send to Supplier"
+        },
+        {
+          "from_state": "draft",
+          "to_state": "cancelled",
+          "action_name": "cancel",
+          "action_label": "Cancel Order"
+        },
+        {
+          "from_state": "sent",
+          "to_state": "confirmed",
+          "action_name": "confirm",
+          "action_label": "Mark Confirmed"
+        },
+        {
+          "from_state": "sent",
+          "to_state": "cancelled",
+          "action_name": "cancel",
+          "action_label": "Cancel Order"
+        },
+        {
+          "from_state": "confirmed",
+          "to_state": "in_transit",
+          "action_name": "ship",
+          "action_label": "Mark Shipped"
+        },
+        {
+          "from_state": "in_transit",
+          "to_state": "received",
+          "action_name": "receive",
+          "action_label": "Mark Received"
+        }
+      ],
+      "hooks": [
+        {
+          "event": "on_state_change",
+          "action_type": "send_notification",
+          "action_config": {
+            "condition": "new_state == 'received'",
+            "message": "Purchase order {{order_number}} received from {{supplier_name}} — ${{total_amount}}"
+          }
+        }
+      ],
+      "relations": []
+    }
+  ],
+  "workflows": [
+    {
+      "name": "Low Stock Reorder",
+      "description": "Checks product stock levels daily and sends an alert for any products at or below their reorder point.",
+      "trigger": {
+        "type": "schedule",
+        "cron": "0 7 * * *"
+      },
+      "steps": [
+        {
+          "id": "query-low-stock",
+          "name": "Find products with low stock",
+          "type": "query",
+          "config": {
+            "doctype": "product",
+            "filter": "stock_qty <= reorder_point AND status != 'discontinued'",
+            "fields": ["name", "sku", "stock_qty", "reorder_point", "reorder_qty", "supplier_id"]
+          },
+          "sort_order": 0
+        },
+        {
+          "id": "check-has-items",
+          "name": "Check if any products are low",
+          "type": "condition",
+          "config": {
+            "expression": "results.length > 0",
+            "on_false": "skip_remaining"
+          },
+          "sort_order": 1
+        },
+        {
+          "id": "format-alert",
+          "name": "Format reorder alert",
+          "type": "transform",
+          "config": {
+            "template": "Low Stock Alert — Reorder Needed:\n{{#each results}}\n- {{name}} ({{sku}}): {{stock_qty}} units left (reorder at {{reorder_point}}, order qty: {{reorder_qty}})\n{{/each}}"
+          },
+          "sort_order": 2
+        },
+        {
+          "id": "send-alert",
+          "name": "Send low-stock notification",
+          "type": "send",
+          "config": {
+            "channel": "default",
+            "message": "{{formatted_output}}"
+          },
+          "sort_order": 3
+        }
+      ],
+      "status": "active"
+    },
+    {
+      "name": "Daily Sales Report",
+      "description": "Generates and sends a daily sales summary every evening with total revenue, transaction count, and top-performing products.",
+      "trigger": {
+        "type": "schedule",
+        "cron": "0 20 * * *"
+      },
+      "steps": [
+        {
+          "id": "get-todays-sales",
+          "name": "Get today's completed sales",
+          "type": "query",
+          "config": {
+            "doctype": "sale",
+            "filter": "date = date('now') AND status = 'completed'",
+            "fields": ["date", "total", "payment_method", "channel", "customer_id", "items"]
+          },
+          "sort_order": 0
+        },
+        {
+          "id": "analyze-sales",
+          "name": "AI analyzes today's sales",
+          "type": "ai",
+          "config": {
+            "prompt": "Analyze today's sales data. Provide: (1) Total revenue, (2) Number of transactions, (3) Average transaction value, (4) Revenue by payment method, (5) Revenue by channel (in-store vs online), (6) Most purchased items if identifiable from the items field. Flag any unusual patterns or notable trends compared to typical daily performance.",
+            "tool_profile": "read-only",
+            "max_turns": 3
+          },
+          "sort_order": 1
+        },
+        {
+          "id": "send-report",
+          "name": "Send daily sales report",
+          "type": "send",
+          "config": {
+            "channel": "default",
+            "message": "Daily Sales Report:\n{{ai_output}}"
+          },
+          "sort_order": 2
+        }
+      ],
+      "status": "active"
+    },
+    {
+      "name": "Customer Follow-Up",
+      "description": "Identifies customers who haven't purchased in 30+ days and sends a follow-up reminder to re-engage them.",
+      "trigger": {
+        "type": "schedule",
+        "cron": "0 10 * * 1"
+      },
+      "steps": [
+        {
+          "id": "query-inactive-customers",
+          "name": "Find customers inactive for 30+ days",
+          "type": "query",
+          "config": {
+            "doctype": "customer",
+            "filter": "last_purchase_date <= date('now', '-30 days') AND status = 'active' AND accepts_marketing = 1",
+            "fields": ["name", "email", "phone", "last_purchase_date", "total_spent", "tier"]
+          },
+          "sort_order": 0
+        },
+        {
+          "id": "check-has-customers",
+          "name": "Check if any customers need follow-up",
+          "type": "condition",
+          "config": {
+            "expression": "results.length > 0",
+            "on_false": "skip_remaining"
+          },
+          "sort_order": 1
+        },
+        {
+          "id": "generate-follow-up",
+          "name": "AI generates follow-up suggestions",
+          "type": "ai",
+          "config": {
+            "prompt": "Review the list of customers who haven't purchased in 30+ days. For each customer tier (VIP, gold, silver, standard), suggest a personalized re-engagement approach. List the top 10 highest-value at-risk customers by total lifetime spend and recommend specific outreach actions.",
+            "tool_profile": "read-only",
+            "max_turns": 3
+          },
+          "sort_order": 2
+        },
+        {
+          "id": "send-follow-up-list",
+          "name": "Send customer follow-up list",
+          "type": "send",
+          "config": {
+            "channel": "default",
+            "message": "Customer Follow-Up Needed:\n{{ai_output}}"
+          },
+          "sort_order": 3
+        }
+      ],
+      "status": "active"
+    }
+  ]
+}

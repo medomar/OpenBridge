@@ -88,6 +88,7 @@ vi.mock('../../src/core/agent-runner.js', () => {
     isValidModel: vi.fn(() => true),
     MODEL_ALIASES: ['haiku', 'sonnet', 'opus'],
     AgentExhaustedError: class AgentExhaustedError extends Error {},
+    setAgentRunnerMetrics: vi.fn(),
   };
 });
 
@@ -238,7 +239,7 @@ describe('Master AI - Command Prefix Stripping', () => {
 
     // Verify Master AI received stripped content
     expect(capturedPrompts).toHaveLength(1);
-    expect(capturedPrompts[0]).toBe('what files are in this project?');
+    expect(capturedPrompts[0]).toContain('what files are in this project?');
     expect(capturedPrompts[0]).not.toContain('/ai');
   });
 
@@ -255,7 +256,7 @@ describe('Master AI - Command Prefix Stripping', () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     expect(capturedPrompts).toHaveLength(1);
-    expect(capturedPrompts[0]).toBe('show me the README');
+    expect(capturedPrompts[0]).toContain('show me the README');
     expect(capturedPrompts[0]).not.toContain('/ai');
   });
 

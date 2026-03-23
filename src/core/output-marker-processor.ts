@@ -12,6 +12,11 @@ import type { FileServer } from './file-server.js';
 import { sendEmail } from './email-sender.js';
 import { publishToGitHubPages } from './github-publisher.js';
 import { createLogger } from './logger.js';
+import type { WorkflowStore } from '../workflows/workflow-store.js';
+import type { WorkflowEngine } from '../workflows/engine.js';
+import type { WorkflowScheduler } from '../workflows/scheduler.js';
+import { WorkflowSchema } from '../types/workflow.js';
+import type { IntegrationHub } from '../integrations/hub.js';
 
 const logger = createLogger('output-marker-processor');
 
@@ -36,6 +41,12 @@ export const APP_STOP_MARKER_RE = /\[APP:stop\]([^[]*)\[\/APP\]/g;
 
 /** Pattern matching [APP:update:appId]jsonData[/APP] markers in AI output */
 export const APP_UPDATE_MARKER_RE = /\[APP:update:([^\]]+)\]([^[]*)\[\/APP\]/g;
+
+/** Pattern matching [WORKFLOW:create]{...json...}[/WORKFLOW] markers in AI output */
+export const WORKFLOW_CREATE_MARKER_RE = /\[WORKFLOW:create\]([\s\S]*?)\[\/WORKFLOW\]/g;
+
+/** Channels that are remote (phone/desktop app) and cannot access localhost URLs */
+export const REMOTE_CHANNELS = new Set(['telegram', 'whatsapp', 'discord']);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -95,6 +106,12 @@ export interface OutputMarkerDeps {
   getRelay: () => InteractionRelay | undefined;
   getConnectors: () => Map<string, Connector>;
   getAuth: () => AuthService | undefined;
+  getWorkflowStore: () => WorkflowStore | undefined;
+  getWorkflowEngine: () => WorkflowEngine | undefined;
+  getWorkflowScheduler: () => WorkflowScheduler | undefined;
+  getIntegrationHub: () => IntegrationHub | undefined;
+  /** On-demand tunnel starter — used for remote channel APP:start delivery (OB-1633) */
+  ensureTunnel?: () => Promise<string | null>;
 }
 
 // ---------------------------------------------------------------------------
@@ -105,7 +122,7 @@ export class OutputMarkerProcessor {
   constructor(private readonly deps: OutputMarkerDeps) {}
 
   /**
-   * Process all output markers in sequence: SHARE → APP → SEND → VOICE.
+   * Process all output markers in sequence: WORKFLOW → SHARE → APP → SEND → VOICE.
    * Returns the cleaned content with all markers stripped or replaced.
    */
   async processAll(
@@ -113,11 +130,87 @@ export class OutputMarkerProcessor {
     connector: Connector,
     recipient: string,
     replyTo?: string,
+    source?: string,
   ): Promise<string> {
-    const afterShare = await this.processShareMarkers(content, connector, recipient, replyTo);
-    const afterApp = await this.processAppMarkers(afterShare);
+    const afterWorkflow = await this.processWorkflowMarkers(content);
+    const afterShare = await this.processShareMarkers(
+      afterWorkflow,
+      connector,
+      recipient,
+      replyTo,
+      source,
+    );
+    const afterApp = await this.processAppMarkers(afterShare, source);
     const afterSend = await this.processSendMarkers(afterApp);
     return this.processVoiceMarkers(afterSend, connector, recipient);
+  }
+
+  /**
+   * Parse [WORKFLOW:create]{...json...}[/WORKFLOW] markers from AI output.
+   * Creates workflow definitions via WorkflowStore and schedules them if they
+   * have a schedule trigger. Replaces markers with confirmation text.
+   */
+  async processWorkflowMarkers(content: string): Promise<string> {
+    const store = this.deps.getWorkflowStore();
+    if (!store) return content.replace(new RegExp(WORKFLOW_CREATE_MARKER_RE.source, 'g'), '');
+
+    let cleaned = content;
+    const regex = new RegExp(WORKFLOW_CREATE_MARKER_RE.source, 'g');
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(content)) !== null) {
+      const fullMatch = match[0];
+      const jsonBody = (match[1] ?? '').trim();
+
+      if (!jsonBody) {
+        cleaned = cleaned.replace(fullMatch, '');
+        continue;
+      }
+
+      try {
+        const raw = JSON.parse(jsonBody) as Record<string, unknown>;
+
+        // Generate an ID if not provided
+        if (!raw['id']) {
+          const { randomUUID } = await import('node:crypto');
+          raw['id'] = randomUUID();
+        }
+
+        // Default status to active
+        if (!raw['status']) {
+          raw['status'] = 'active';
+        }
+
+        const workflow = WorkflowSchema.parse(raw);
+        store.createWorkflow(workflow);
+
+        // Reload engine so the new workflow is available for execution
+        const engine = this.deps.getWorkflowEngine();
+        if (engine) {
+          await engine.loadWorkflows();
+        }
+
+        // Schedule if it's a schedule trigger
+        const scheduler = this.deps.getWorkflowScheduler();
+        if (scheduler && workflow.trigger.type === 'schedule' && workflow.trigger.cron) {
+          await scheduler.scheduleWorkflow(workflow);
+        }
+
+        const replacement = `\u2705 Workflow **${workflow.name}** created (${workflow.trigger.type} trigger, ${workflow.steps.length} steps).`;
+        cleaned = cleaned.replace(fullMatch, replacement);
+
+        logger.info(
+          { workflowId: workflow.id, name: workflow.name, trigger: workflow.trigger.type },
+          'Workflow created via WORKFLOW:create marker',
+        );
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        logger.warn({ error: errorMsg, jsonBody }, 'Failed to parse WORKFLOW:create marker');
+        cleaned = cleaned.replace(fullMatch, `\u26a0\ufe0f Failed to create workflow: ${errorMsg}`);
+      }
+    }
+
+    return cleaned;
   }
 
   /**
@@ -190,6 +283,7 @@ export class OutputMarkerProcessor {
     connector: Connector,
     recipient: string,
     replyTo?: string,
+    _source?: string,
   ): Promise<string> {
     const workspacePath = this.deps.getWorkspacePath();
     if (!workspacePath) return content;
@@ -249,6 +343,20 @@ export class OutputMarkerProcessor {
       if (channel === 'github-pages') {
         await this.handleGitHubPagesShare(resolvedPath);
         cleaned = cleaned.replace(fullMatch, '');
+        continue;
+      }
+
+      // Handle gdrive channel — upload file to Google Drive and return shareable link
+      if (channel === 'gdrive') {
+        const shareLink = await this.handleGDriveShare(resolvedPath);
+        cleaned = cleaned.replace(fullMatch, shareLink ?? '');
+        continue;
+      }
+
+      // Handle dropbox channel — upload file to Dropbox and return shareable link
+      if (channel === 'dropbox') {
+        const shareLink = await this.handleDropboxShare(resolvedPath);
+        cleaned = cleaned.replace(fullMatch, shareLink ?? '');
         continue;
       }
 
@@ -489,6 +597,94 @@ export class OutputMarkerProcessor {
   }
 
   /**
+   * Handle [SHARE:gdrive]/path/to/file[/SHARE] markers.
+   * Uploads the file to Google Drive via the GoogleDriveAdapter, makes it publicly
+   * accessible, and returns the shareable web link. Returns null on failure.
+   */
+  private async handleGDriveShare(filePath: string): Promise<string | null> {
+    const hub = this.deps.getIntegrationHub();
+    if (!hub) {
+      logger.warn('SHARE:gdrive marker received but IntegrationHub is not configured — skipping');
+      return null;
+    }
+
+    let driveAdapter;
+    try {
+      driveAdapter = hub.get('google-drive');
+    } catch {
+      logger.warn(
+        'SHARE:gdrive marker received but google-drive integration is not registered — skipping',
+      );
+      return null;
+    }
+
+    try {
+      const uploadResult = (await driveAdapter.execute('upload_file', { filePath })) as {
+        fileId: string;
+        webViewLink: string | null;
+      };
+
+      // Make the file publicly accessible so anyone with the link can view it
+      const shareResult = (await driveAdapter.execute('share_file', {
+        fileId: uploadResult.fileId,
+        type: 'anyone',
+        role: 'reader',
+      })) as { webViewLink: string | null };
+
+      const link = shareResult.webViewLink ?? uploadResult.webViewLink;
+      if (link) {
+        logger.info({ filePath, link }, 'SHARE:gdrive dispatched');
+        return link;
+      }
+
+      logger.warn({ filePath }, 'SHARE:gdrive: no shareable link returned');
+      return null;
+    } catch (err) {
+      logger.warn({ filePath, err }, 'SHARE:gdrive: upload or share failed');
+      return null;
+    }
+  }
+
+  /**
+   * Handle [SHARE:dropbox]/path/to/file[/SHARE] markers.
+   * Uploads the file to Dropbox via the DropboxAdapter, creates a public shared link,
+   * and returns that link. Returns null on failure.
+   */
+  private async handleDropboxShare(filePath: string): Promise<string | null> {
+    const hub = this.deps.getIntegrationHub();
+    if (!hub) {
+      logger.warn('SHARE:dropbox marker received but IntegrationHub is not configured — skipping');
+      return null;
+    }
+
+    let dropboxAdapter;
+    try {
+      dropboxAdapter = hub.get('dropbox');
+    } catch {
+      logger.warn(
+        'SHARE:dropbox marker received but dropbox integration is not registered — skipping',
+      );
+      return null;
+    }
+
+    try {
+      const uploadResult = (await dropboxAdapter.execute('upload_file', { filePath })) as {
+        path: string;
+      };
+
+      const linkResult = (await dropboxAdapter.execute('create_shared_link', {
+        dropboxPath: uploadResult.path,
+      })) as { url: string };
+
+      logger.info({ filePath, url: linkResult.url }, 'SHARE:dropbox dispatched');
+      return linkResult.url;
+    } catch (err) {
+      logger.warn({ filePath, err }, 'SHARE:dropbox: upload or share link creation failed');
+      return null;
+    }
+  }
+
+  /**
    * Handle [SHARE:github-pages]/path/to/file[/SHARE] markers.
    * Publishes the validated file (already confirmed to be under .openbridge/generated/)
    * to the gh-pages branch of the workspace git repository.
@@ -515,7 +711,7 @@ export class OutputMarkerProcessor {
    * APP:start and APP:stop require an AppServer. APP:update requires an InteractionRelay.
    * Markers for unconfigured components are stripped silently.
    */
-  async processAppMarkers(content: string): Promise<string> {
+  async processAppMarkers(content: string, _source?: string): Promise<string> {
     const appServer = this.deps.getAppServer();
     const relay = this.deps.getRelay();
     if (!appServer && !relay) return content;
@@ -537,9 +733,30 @@ export class OutputMarkerProcessor {
 
         try {
           const instance = await appServer.startApp(appPath);
-          const url = instance.publicUrl ?? instance.url;
-          cleaned = cleaned.replace(fullMatch, `App started at ${url}`);
-          logger.info({ appPath, url, appId: instance.id }, 'APP:start marker processed');
+          let replacement: string;
+          if (_source && REMOTE_CHANNELS.has(_source) && !instance.publicUrl) {
+            // Attempt auto-tunnel before falling back to SHARE attachment (OB-1633)
+            const tunnelUrl = this.deps.ensureTunnel ? await this.deps.ensureTunnel() : null;
+            if (tunnelUrl) {
+              const appUrl = `${tunnelUrl.replace(/\/$/, '')}/${appPath.replace(/^\//, '')}`;
+              replacement = `App started at ${appUrl}`;
+              logger.info(
+                { appPath, appUrl, source: _source },
+                'APP:start on remote channel — using auto-tunnel URL',
+              );
+            } else {
+              logger.info(
+                { appPath, source: _source },
+                'APP:start on remote channel without tunnel — falling back to SHARE attachment',
+              );
+              replacement = `[SHARE:${_source}]{"path":"${appPath}/index.html"}[/SHARE]`;
+            }
+          } else {
+            const url = instance.publicUrl ?? instance.url;
+            replacement = `App started at ${url}`;
+            logger.info({ appPath, url, appId: instance.id }, 'APP:start marker processed');
+          }
+          cleaned = cleaned.replace(fullMatch, replacement);
         } catch (err) {
           logger.warn({ appPath, err }, 'APP:start marker: failed to start app');
           cleaned = cleaned.replace(fullMatch, `Failed to start app at ${appPath}`);

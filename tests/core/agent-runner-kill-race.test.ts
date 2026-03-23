@@ -39,6 +39,7 @@ function createMockChild(): MockChild {
   child.stdout = new EventEmitter();
   child.stderr = new EventEmitter();
   child.pid = Math.floor(Math.random() * 100000);
+  (child as unknown as Record<string, unknown>).exitCode = null;
   child.kill = vi.fn((_signal?: string) => true);
   mockChildren.push(child);
   return child;

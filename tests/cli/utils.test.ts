@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { writeFileSync, unlinkSync, existsSync, readFileSync } from 'node:fs';
-import { tmpdir, homedir } from 'node:os';
+import { tmpdir } from 'node:os';
 
 import {
   isPackagedMode,
@@ -28,10 +28,10 @@ describe('isPackagedMode()', () => {
     expect(isPackagedMode()).toBe(false);
   });
 
-  it('returns true when process.pkg is defined (simulates pkg binary)', () => {
+  it('returns false even when process.pkg is defined (SDK-only mode)', () => {
     (process as { pkg?: unknown }).pkg = {};
     try {
-      expect(isPackagedMode()).toBe(true);
+      expect(isPackagedMode()).toBe(false);
     } finally {
       delete (process as { pkg?: unknown }).pkg;
     }
@@ -53,11 +53,11 @@ describe('getConfigDir()', () => {
     expect(dir).toBe(process.cwd());
   });
 
-  it('returns ~/.openbridge in packaged mode', () => {
+  it('returns process.cwd() even when process.pkg is defined (SDK-only mode)', () => {
     (process as { pkg?: unknown }).pkg = {};
     try {
       const dir = getConfigDir();
-      expect(dir).toBe(join(homedir(), '.openbridge'));
+      expect(dir).toBe(process.cwd());
     } finally {
       delete (process as { pkg?: unknown }).pkg;
     }
@@ -391,7 +391,7 @@ describe('checkForUpdate()', () => {
     expect(result).not.toBeNull();
     expect(result!.available).toBe(false);
     expect(result!.latest).toBe('0.0.8');
-    expect(result!.current).toBe('0.0.8');
+    expect(result!.current).toBe('0.1.0');
   });
 
   it('returns null on network error', async () => {

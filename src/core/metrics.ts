@@ -32,6 +32,26 @@ export interface MetricsSnapshot {
     transient: number;
     permanent: number;
   };
+  promptSize: {
+    /** Total number of agent runs that measured a prompt size. */
+    runs: number;
+    /** Number of runs where the prompt was truncated (> limit). */
+    truncatedRuns: number;
+    /** Chars of the most recent prompt measured. */
+    lastChars: number;
+    /** Limit (chars) used for the most recent prompt. */
+    lastLimit: number;
+    /** Truncation percentage of the most recent prompt (0 if not truncated). */
+    lastTruncatedPct: number;
+    /** Maximum prompt size (chars) seen across all runs. */
+    maxChars: number;
+    /** Average prompt size (chars) across all runs. */
+    avgChars: number;
+  };
+  costCapped: {
+    /** Total number of workers killed because they exceeded their cost cap. */
+    total: number;
+  };
 }
 
 export type MetricsDataProvider = () => MetricsSnapshot;
@@ -73,6 +93,18 @@ export class MetricsCollector {
   private _errorsTotal = 0;
   private _errorsTransient = 0;
   private _errorsPermanent = 0;
+
+  // Cost-capped worker counter
+  private _costCapped = 0;
+
+  // Prompt-size tracking
+  private _promptRuns = 0;
+  private _promptTruncatedRuns = 0;
+  private _promptLastChars = 0;
+  private _promptLastLimit = 0;
+  private _promptLastTruncatedPct = 0;
+  private _promptMaxChars = 0;
+  private _promptTotalChars = 0;
 
   recordReceived(): void {
     this._received++;
@@ -117,6 +149,28 @@ export class MetricsCollector {
     this._deadLettered++;
   }
 
+  /** Increment the cost-capped worker counter. */
+  recordCostCapped(): void {
+    this._costCapped++;
+  }
+
+  /**
+   * Record prompt-size statistics for a single agent run.
+   *
+   * @param chars - Actual prompt size in characters (after sanitization, before truncation)
+   * @param limit - The max-length budget applied to this prompt
+   * @param truncatedPct - Percentage of the prompt lost to truncation (0 when not truncated)
+   */
+  recordPromptSize(chars: number, limit: number, truncatedPct: number): void {
+    this._promptRuns++;
+    this._promptLastChars = chars;
+    this._promptLastLimit = limit;
+    this._promptLastTruncatedPct = truncatedPct;
+    this._promptTotalChars += chars;
+    if (chars > this._promptMaxChars) this._promptMaxChars = chars;
+    if (truncatedPct > 0) this._promptTruncatedRuns++;
+  }
+
   snapshot(): MetricsSnapshot {
     return {
       uptime: Math.floor((Date.now() - this.startedAt) / 1000),
@@ -145,6 +199,18 @@ export class MetricsCollector {
         total: this._errorsTotal,
         transient: this._errorsTransient,
         permanent: this._errorsPermanent,
+      },
+      promptSize: {
+        runs: this._promptRuns,
+        truncatedRuns: this._promptTruncatedRuns,
+        lastChars: this._promptLastChars,
+        lastLimit: this._promptLastLimit,
+        lastTruncatedPct: this._promptLastTruncatedPct,
+        maxChars: this._promptMaxChars,
+        avgChars: this._promptRuns > 0 ? Math.round(this._promptTotalChars / this._promptRuns) : 0,
+      },
+      costCapped: {
+        total: this._costCapped,
       },
     };
   }

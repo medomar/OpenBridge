@@ -1,8 +1,9 @@
 import * as fs from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 import path from 'node:path';
 import type { AppConfig, EmailConfig, MCPServer, SecurityConfig } from '../types/config.js';
-import { V2ConfigSchema, ENV_DENY_PATTERNS } from '../types/config.js';
+import { V2ConfigSchema, ENV_DENY_PATTERNS, getEffectiveSandboxMode } from '../types/config.js';
 import type { DiscoveredTool } from '../types/discovery.js';
 import { warnAboutExposedSecrets } from './env-sanitizer.js';
 import { TunnelManager } from './tunnel-manager.js';
@@ -27,6 +28,7 @@ import { HealthServer } from './health.js';
 import type { HealthStatus, ComponentStatus } from './health.js';
 import { MessageQueue } from './queue.js';
 import { MetricsCollector, MetricsServer } from './metrics.js';
+import { setAgentRunnerMetrics } from './agent-runner.js';
 import { PluginRegistry } from './registry.js';
 import { RateLimiter } from './rate-limiter.js';
 import { Router, classifyMessagePriority } from './router.js';
@@ -36,6 +38,7 @@ import type { InteractionRelay } from './interaction-relay.js';
 import { SecretScanner } from './secret-scanner.js';
 import type { SecretMatch } from './secret-scanner.js';
 import { DockerSandbox, DockerHealthMonitor, cleanupSandboxContainers } from './docker-sandbox.js';
+import { IntegrationHub } from '../integrations/hub.js';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('bridge');
@@ -98,6 +101,7 @@ export class Bridge {
   private tunnelExitHandler: (() => void) | null = null;
   private tunnelSigintHandler: (() => void) | null = null;
   private dockerHealthMonitor: DockerHealthMonitor | null = null;
+  private readonly integrationHub: IntegrationHub;
   private readonly detectedSecrets: SecretMatch[] = [];
   private readonly sessionExcludePatterns: string[] = [];
   private readonly workspaceInclude: readonly string[];
@@ -115,6 +119,7 @@ export class Bridge {
     this.auditLogger = new AuditLogger(config.audit);
     this.healthServer = new HealthServer(config.health);
     this.metrics = new MetricsCollector();
+    setAgentRunnerMetrics(this.metrics);
     this.metricsServer = new MetricsServer(config.metrics);
     this.rateLimiter = new RateLimiter(config.auth.rateLimit);
     this.queue = new MessageQueue(config.queue, this.metrics);
@@ -140,6 +145,7 @@ export class Bridge {
     }
 
     this.securityConfig = options?.securityConfig;
+    this.integrationHub = new IntegrationHub();
   }
 
   /** Register built-in and external plugins before starting */
@@ -162,6 +168,72 @@ export class Bridge {
   /** Returns the tunnel public URL if a tunnel is active, or null if not running */
   getTunnelUrl(): string | null {
     return this.tunnelPublicUrl;
+  }
+
+  /**
+   * Ensure a tunnel is running and return its public URL.
+   * Called on-demand by the output-marker-processor for remote channel file delivery.
+   *
+   * Logic:
+   * 1. If tunnelManager already has a public URL, return it immediately.
+   * 2. If tunnelManager exists but hasn't started, start it on the file server port.
+   * 3. If no tunnel tool is configured, attempt to auto-detect `cloudflared` via `which`.
+   *    If found, create a TunnelManager, start it, store the public URL, and notify Master.
+   * 4. If no tunnel tool is available, return null.
+   */
+  async ensureTunnel(): Promise<string | null> {
+    // 1. Already active — return immediately
+    if (this.tunnelManager?.isActive()) {
+      return this.tunnelPublicUrl;
+    }
+
+    const fileServerPort = this.getFileServerPort();
+    if (fileServerPort === null) {
+      return null;
+    }
+
+    // 2. TunnelManager exists but not yet started — start it
+    if (this.tunnelManager) {
+      this.registerTunnelShutdownHandlers();
+      try {
+        this.tunnelPublicUrl = await this.tunnelManager.start(fileServerPort);
+        logger.info(
+          { url: this.tunnelPublicUrl },
+          'Auto-tunnel started for remote channel file delivery',
+        );
+        this.master?.setTunnelUrl(this.tunnelPublicUrl);
+        return this.tunnelPublicUrl;
+      } catch (error) {
+        logger.warn({ err: error }, 'ensureTunnel: existing TunnelManager failed to start');
+        return null;
+      }
+    }
+
+    // 3. No tunnel configured — attempt to auto-detect cloudflared
+    try {
+      const whichCmd = process.platform === 'win32' ? 'where' : 'which';
+      execSync(`${whichCmd} cloudflared`, { stdio: 'pipe' });
+    } catch {
+      // cloudflared not found
+      return null;
+    }
+
+    // cloudflared is available — create and start a new TunnelManager
+    this.tunnelManager = new TunnelManager('cloudflared');
+    this.registerTunnelShutdownHandlers();
+    try {
+      this.tunnelPublicUrl = await this.tunnelManager.start(fileServerPort);
+      logger.info(
+        { url: this.tunnelPublicUrl },
+        'Auto-tunnel started for remote channel file delivery',
+      );
+      this.master?.setTunnelUrl(this.tunnelPublicUrl);
+      return this.tunnelPublicUrl;
+    } catch (error) {
+      logger.warn({ err: error }, 'ensureTunnel: auto-detected cloudflared failed to start');
+      this.tunnelManager = null;
+      return null;
+    }
   }
 
   /** Returns WebChat access URL (with token) and the raw token if a webchat connector is active */
@@ -215,6 +287,11 @@ export class Bridge {
   /** Returns the McpRegistry instance (null if no mcpRegistry was provided) */
   getMcpRegistry(): McpRegistry | null {
     return this.mcpRegistry;
+  }
+
+  /** Returns the IntegrationHub instance */
+  getIntegrationHub(): IntegrationHub {
+    return this.integrationHub;
   }
 
   /**
@@ -284,6 +361,18 @@ export class Bridge {
       await this.runSecretScan(this.workspacePath);
     }
 
+    // Resolve effective sandbox mode — auto-detects Docker/bubblewrap for trusted mode (OB-1589)
+    if (this.securityConfig) {
+      const effectiveMode = getEffectiveSandboxMode(this.securityConfig);
+      if (effectiveMode !== this.securityConfig.sandbox.mode) {
+        logger.info(
+          { from: this.securityConfig.sandbox.mode, to: effectiveMode },
+          'Sandbox mode resolved',
+        );
+        this.securityConfig.sandbox.mode = effectiveMode;
+      }
+    }
+
     // Docker startup health check + periodic recheck (OB-1557)
     if (this.securityConfig?.sandbox?.mode === 'docker') {
       const dockerSandbox = new DockerSandbox();
@@ -313,6 +402,33 @@ export class Bridge {
           'MemoryManager initialization failed — continuing with DotFolderManager fallback',
         );
         this.memory = null;
+      }
+    }
+
+    // Startup sweep: mark stale 'running' agent_activity records as 'abandoned' (OB-1518)
+    // Any record still 'running' after 10 minutes is an orphan from a prior crash.
+    if (this.memory) {
+      try {
+        const db = this.memory.getDb();
+        if (db) {
+          const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+          const now = new Date().toISOString();
+          const result = db
+            .prepare(
+              `UPDATE agent_activity
+               SET status = 'abandoned', completed_at = ?, updated_at = ?
+               WHERE status = 'running' AND started_at < ?`,
+            )
+            .run(now, now, tenMinutesAgo);
+          if (result.changes > 0) {
+            logger.warn(
+              { count: result.changes },
+              'Startup sweep: marked stale running agents as abandoned (likely orphans from a prior crash)',
+            );
+          }
+        }
+      } catch (err) {
+        logger.warn({ err }, 'Startup activity sweep failed — continuing');
       }
     }
 
@@ -368,6 +484,16 @@ export class Bridge {
       this.workspaceInclude,
       this.workspaceExclude,
     );
+
+    // Wire IntegrationHub into Router and MasterManager
+    this.router.setIntegrationHub(this.integrationHub);
+
+    // Wire auto-tunnel into Router for on-demand remote channel APP delivery (OB-1633)
+    this.router.setEnsureTunnel(() => this.ensureTunnel());
+
+    if (this.master) {
+      this.master.setIntegrationHub(this.integrationHub);
+    }
 
     if (this.master) {
       // V2 flow: Master AI handles all routing — skip provider initialization
@@ -425,6 +551,36 @@ export class Bridge {
         } catch {
           // best-effort — cost tracking is non-fatal
         }
+      }
+    });
+
+    // Send an error response to the user when their message is permanently failed (DLQ).
+    this.queue.onDeadLetter(async (message, _error) => {
+      try {
+        const connector = this.router.getConnector(message.source);
+        if (!connector) {
+          logger.warn(
+            { source: message.source },
+            'onDeadLetter: connector not found — cannot send error response',
+          );
+          return;
+        }
+        const msg: OutboundMessage = {
+          target: message.source,
+          recipient: message.sender,
+          content:
+            "Sorry, I wasn't able to complete your request. Please try again or simplify your request.",
+        };
+        await connector.sendMessage(msg);
+        logger.info(
+          { source: message.source, sender: message.sender },
+          'Sent error response for DLQ message',
+        );
+      } catch (err) {
+        logger.warn(
+          { err, source: message.source, sender: message.sender },
+          'onDeadLetter: failed to send error response',
+        );
       }
     });
 
@@ -617,6 +773,14 @@ export class Bridge {
     if (this.master) {
       await this.master.shutdown();
       logger.info('Master AI shut down');
+    }
+
+    // Shut down IntegrationHub — gracefully tears down all registered integrations
+    try {
+      await this.integrationHub.shutdown();
+      logger.info('IntegrationHub shut down');
+    } catch (error) {
+      logger.warn({ err: error }, 'IntegrationHub shutdown failed — continuing');
     }
 
     // Stop all running apps before tearing down connectors
@@ -965,11 +1129,31 @@ export class Bridge {
       // File doesn't exist — no-op
     }
 
-    // 2. exploration/ directory — exploration state is now in system_config
+    // 2. exploration/ directory — only delete when exploration is completed or missing.
+    //    Active exploration writes incremental state here; deleting mid-run corrupts it.
     try {
       await fs.access(path.join(dotFolderPath, 'exploration'));
-      await fs.rm(path.join(dotFolderPath, 'exploration'), { recursive: true, force: true });
-      logger.info('Removed legacy .openbridge/exploration/ directory');
+      const statePath = path.join(dotFolderPath, 'exploration', 'exploration-state.json');
+      let safeToDelete = false;
+      try {
+        const stateRaw = await fs.readFile(statePath, 'utf-8');
+        const state = JSON.parse(stateRaw) as { status?: string };
+        if (state.status === 'completed') {
+          safeToDelete = true;
+        } else {
+          logger.debug(
+            { status: state.status },
+            'Skipping exploration/ cleanup — exploration still in progress',
+          );
+        }
+      } catch {
+        // exploration-state.json missing — safe to delete the directory
+        safeToDelete = true;
+      }
+      if (safeToDelete) {
+        await fs.rm(path.join(dotFolderPath, 'exploration'), { recursive: true, force: true });
+        logger.info('Removed legacy .openbridge/exploration/ directory');
+      }
     } catch {
       // Directory doesn't exist — no-op
     }

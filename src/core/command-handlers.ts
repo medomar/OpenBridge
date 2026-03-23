@@ -20,9 +20,19 @@ import type { RiskLevel, ExecutionProfile, DeepPhase } from '../types/agent.js';
 import { BuiltInProfileNameSchema } from '../types/agent.js';
 import type { SkillManager } from '../master/skill-manager.js';
 import type { ParsedSpawnMarker } from '../master/spawn-parser.js';
+import type { IntegrationHub } from '../integrations/hub.js';
+import type { CredentialStore } from '../integrations/credential-store.js';
+import type { WorkflowStore } from '../workflows/workflow-store.js';
+import type { WorkflowEngine } from '../workflows/engine.js';
+import type { SecurityConfig } from '../types/config.js';
 import { CHECKS } from '../cli/doctor.js';
 import type { CheckResult } from '../cli/doctor.js';
 import { loadAllSkillPacks } from '../master/skill-pack-loader.js';
+import type { ProcessedDocument, ExtractedEntity } from '../types/intelligence.js';
+import type { FullDocType } from '../intelligence/doctype-store.js';
+import type { IntegrationCapability } from '../types/integration.js';
+import type { OpenAPI, OpenAPIV3 } from 'openapi-types';
+import type Database from 'better-sqlite3';
 import { createLogger } from './logger.js';
 
 const logger = createLogger('command-handlers');
@@ -121,8 +131,13 @@ export interface CommandHandlerDeps {
   getAppServer: () => AppServer | undefined;
   getSkillManager: () => SkillManager | undefined;
   getWorkspacePath: () => string | undefined;
+  getIntegrationHub: () => IntegrationHub | undefined;
+  getCredentialStore: () => CredentialStore | undefined;
+  getWorkflowStore: () => WorkflowStore | undefined;
+  getWorkflowEngine: () => WorkflowEngine | undefined;
   getConnectors: () => Map<string, Connector>;
   getProviders: () => Map<string, AIProvider>;
+  getSecurityConfig: () => SecurityConfig | undefined;
 
   // Pending confirmations/escalations
   getPendingStopConfirmations: () => Map<string, PendingConfirmation>;
@@ -149,6 +164,12 @@ export interface CommandHandlerDeps {
 export class CommandHandlers {
   private deps: CommandHandlerDeps;
 
+  /**
+   * Per-user cURL accumulation buffer. Users can send multiple cURL commands as separate
+   * messages and then trigger connection with "done" or "connect". Maps sender → curl lines.
+   */
+  private readonly curlBuffers: Map<string, string[]> = new Map();
+
   constructor(deps: CommandHandlerDeps) {
     this.deps = deps;
   }
@@ -156,6 +177,56 @@ export class CommandHandlers {
   /** Update mutable dependency references (e.g. after memory init). */
   updateDeps(partial: Partial<CommandHandlerDeps>): void {
     this.deps = { ...this.deps, ...partial };
+  }
+
+  // -------------------------------------------------------------------------
+  // cURL accumulation buffer — used by router to support multi-message cURL
+  // -------------------------------------------------------------------------
+
+  /** Returns true if the sender has one or more pending cURL commands accumulated. */
+  hasPendingCurls(sender: string): boolean {
+    const buf = this.curlBuffers.get(sender);
+    return buf !== undefined && buf.length > 0;
+  }
+
+  /**
+   * Appends a cURL command to the sender's buffer.
+   * @returns The new buffer length after adding the command.
+   */
+  addCurlToBuffer(sender: string, curl: string): number {
+    const existing = this.curlBuffers.get(sender) ?? [];
+    existing.push(curl.trim());
+    this.curlBuffers.set(sender, existing);
+    return existing.length;
+  }
+
+  /** Flushes and returns all accumulated cURL commands joined by newline, then clears buffer. */
+  flushCurlBuffer(sender: string): string {
+    const buf = this.curlBuffers.get(sender) ?? [];
+    this.curlBuffers.delete(sender);
+    return buf.join('\n');
+  }
+
+  /** Clears the cURL buffer for a sender without returning content. */
+  clearCurlBuffer(sender: string): void {
+    this.curlBuffers.delete(sender);
+  }
+
+  /**
+   * handleCurlAccumulationMessage — called when a standalone "curl …" message is received.
+   * Adds the cURL to the sender's buffer and sends an acknowledgement.
+   */
+  async handleCurlAccumulationMessage(
+    message: InboundMessage,
+    connector: Connector,
+  ): Promise<void> {
+    const count = this.addCurlToBuffer(message.sender, message.content.trim());
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: `cURL command ${count} saved. Send more cURL commands or say *"done"* / *"connect"* to create the API integration.`,
+      replyTo: message.id,
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -418,6 +489,26 @@ export class CommandHandlers {
    * stores the grant in the appropriate backing store (session Map or DB) per scope (OB-1588).
    */
   async handleAllowCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const trustLevel = this.deps.getSecurityConfig()?.trustLevel ?? 'standard';
+    if (trustLevel === 'sandbox') {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: '⛔ Sandbox mode — tool escalation is disabled.',
+        replyTo: message.id,
+      });
+      return;
+    }
+    if (trustLevel === 'trusted') {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'ℹ️ Trusted mode — all tools are already available.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
     // Parse: /allow all — grant all pending escalations at once (OB-1632)
     const trimmed = message.content.trim();
     const rest = trimmed.slice('/allow'.length).trim();
@@ -538,6 +629,26 @@ export class CommandHandlers {
    * --session / --permanent modifiers are supported for bulk grants.
    */
   async handleAllowAllCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const trustLevel = this.deps.getSecurityConfig()?.trustLevel ?? 'standard';
+    if (trustLevel === 'sandbox') {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: '⛔ Sandbox mode — tool escalation is disabled.',
+        replyTo: message.id,
+      });
+      return;
+    }
+    if (trustLevel === 'trusted') {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'ℹ️ Trusted mode — all tools are already available.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
     const entries = this.deps.takeAllPendingEscalations(message.sender);
     if (entries.length === 0) {
       await connector.sendMessage({
@@ -784,10 +895,10 @@ export class CommandHandlers {
       }
       const levelLabel =
         current === 'auto-approve-all'
-          ? 'auto (approve everything)'
+          ? 'auto (CLI adapter — no per-tool prompts)'
           : current === 'auto-approve-up-to-edit'
-            ? 'edit (approve up to code-edit)'
-            : 'ask (always ask)';
+            ? 'edit (SDK adapter — prompt for Bash/Write only)'
+            : 'ask (SDK adapter — every tool call relayed to you)';
 
       await connector.sendMessage({
         target: channel,
@@ -828,10 +939,10 @@ export class CommandHandlers {
 
     const confirmLabel =
       newMode === 'auto-approve-all'
-        ? 'auto — all escalations will be approved automatically'
+        ? 'auto — CLI adapter, pre-approved tools, no per-tool prompts'
         : newMode === 'auto-approve-up-to-edit'
-          ? 'edit — code-edit and below auto-approved, full-access still prompts'
-          : 'ask — you will be prompted for every escalation';
+          ? 'edit — SDK adapter, auto-approve reads/edits, prompt for Bash/Write'
+          : 'ask — SDK adapter, every tool call relayed to you for approval';
 
     await connector.sendMessage({
       target: channel,
@@ -2817,6 +2928,501 @@ export class CommandHandlers {
   }
 
   // -------------------------------------------------------------------------
+  // handleProcessCommand
+  // -------------------------------------------------------------------------
+
+  async handleProcessCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    // Parse file path from "/process <path>"
+    const match = /^\/process\s+(.+)$/i.exec(message.content.trim());
+    if (!match) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Usage: /process <file-path>\nExample: /process /path/to/invoice.pdf',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const filePath = (match[1] ?? '').trim();
+
+    // Send processing acknowledgement
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: `Processing document: ${filePath}...`,
+      replyTo: message.id,
+    });
+
+    let doc: ProcessedDocument;
+    try {
+      const { processDocument } = await import('../intelligence/document-processor.js');
+      doc = await processDocument(filePath);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn({ filePath, err }, '/process command: document processing failed');
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: `Failed to process document: ${msg}`,
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // Run entity extraction to get docType + entities
+    let docType = doc.docType;
+    let entities: ExtractedEntity[] = [];
+    try {
+      const { extractEntities } = await import('../intelligence/entity-extractor.js');
+      const extraction = await extractEntities(
+        {
+          rawText: doc.rawText,
+          tables: doc.tables,
+          images: doc.images,
+          metadata: doc.metadata,
+        },
+        `File: ${doc.filename}`,
+      );
+      docType = extraction.docType;
+      entities = extraction.entities;
+    } catch (err) {
+      logger.warn(
+        { filePath, err },
+        '/process command: entity extraction failed, using raw result',
+      );
+    }
+
+    // Format user-friendly summary
+    const lines: string[] = [`*Document: ${doc.filename}*`, ''];
+    lines.push(`Type: ${docType}`);
+    lines.push(`Format: ${doc.mimeType}`);
+
+    if (doc.tables.length > 0) {
+      lines.push(`Tables: ${doc.tables.length}`);
+    }
+
+    if (entities.length > 0) {
+      // Group entities by type
+      const byType = new Map<string, string[]>();
+      for (const e of entities) {
+        const group = byType.get(e.type) ?? [];
+        group.push(e.name);
+        byType.set(e.type, group);
+      }
+
+      lines.push('');
+      lines.push('*Extracted Entities*');
+      for (const [type, names] of byType) {
+        const label = type.charAt(0).toUpperCase() + type.slice(1);
+        lines.push(`• ${label}: ${names.join(', ')}`);
+      }
+    } else if (doc.rawText.trim().length > 0) {
+      // No entities — show a short text excerpt
+      const excerpt = doc.rawText.trim().slice(0, 200);
+      lines.push('');
+      lines.push('*Preview*');
+      lines.push(excerpt + (doc.rawText.length > 200 ? '…' : ''));
+    } else {
+      lines.push('');
+      lines.push('No text content extracted.');
+    }
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: lines.join('\n'),
+      replyTo: message.id,
+    });
+
+    logger.info({ sender: message.sender, filePath, docType }, '/process command handled');
+  }
+
+  // -------------------------------------------------------------------------
+  // handleDoctypesCommand — /doctypes (list all registered DocTypes)
+  // -------------------------------------------------------------------------
+
+  async handleDoctypesCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const memory = this.deps.getMemory();
+    const db = memory?.getDb();
+    if (!db) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'DocType registry unavailable — memory system not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    let doctypes: Array<{ name: string; label_plural: string; icon?: string | null }> = [];
+    try {
+      const { listDocTypes } = await import('../intelligence/doctype-store.js');
+      doctypes = listDocTypes(db);
+    } catch (err) {
+      logger.warn({ err }, '/doctypes command: failed to list doctypes');
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Failed to load DocTypes — database may not be initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    if (doctypes.length === 0) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content:
+          '*DocTypes*\n\nNo DocTypes registered yet.\nAsk the AI to create one: "I need to track invoices"',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const lines: string[] = ['*Registered DocTypes*', ''];
+    for (const dt of doctypes) {
+      const icon = dt.icon ? `${dt.icon} ` : '';
+      lines.push(`• ${icon}${dt.label_plural} (/doctype ${dt.name})`);
+    }
+    lines.push('');
+    lines.push('Use /doctype <name> to see fields and states.');
+    lines.push('Use /dt <name> list to browse records.');
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: lines.join('\n'),
+      replyTo: message.id,
+    });
+
+    logger.info({ sender: message.sender, count: doctypes.length }, '/doctypes command handled');
+  }
+
+  // -------------------------------------------------------------------------
+  // handleDoctypeCommand — /doctype {name} (show DocType details)
+  // -------------------------------------------------------------------------
+
+  async handleDoctypeCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const match = /^\/doctype\s+(\S+)/i.exec(message.content.trim());
+    if (!match) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Usage: /doctype <name>\nExample: /doctype invoice\n\nUse /doctypes to see all.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const name = (match[1] ?? '').trim();
+    const memory = this.deps.getMemory();
+    const db = memory?.getDb();
+    if (!db) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'DocType registry unavailable — memory system not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    let full: FullDocType | null = null;
+    try {
+      const { getDocTypeByName } = await import('../intelligence/doctype-store.js');
+      full = getDocTypeByName(db, name);
+    } catch (err) {
+      logger.warn({ err, name }, '/doctype command: failed to load doctype');
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: `Failed to load DocType "${name}".`,
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    if (!full) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: `DocType "${name}" not found.\nUse /doctypes to see all registered DocTypes.`,
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const dt = full.doctype;
+    const icon = dt.icon ? `${dt.icon} ` : '';
+    const lines: string[] = [`*${icon}${dt.label_singular}* (${dt.name})`, ''];
+
+    // Fields
+    if (full.fields.length > 0) {
+      lines.push('*Fields*');
+      for (const f of full.fields) {
+        const req = f.required ? ' ✱' : '';
+        const computed = f.formula ? ' (computed)' : '';
+        lines.push(`• ${f.label} [${f.field_type}]${req}${computed}`);
+      }
+      lines.push('');
+    }
+
+    // States
+    if (full.states.length > 0) {
+      lines.push('*States*');
+      const stateList = full.states.map((s) => s.label).join(' → ');
+      lines.push(stateList);
+      lines.push('');
+    }
+
+    // Transitions
+    if (full.transitions.length > 0) {
+      lines.push('*Actions*');
+      for (const t of full.transitions) {
+        lines.push(`• ${t.action_label} (${t.from_state} → ${t.to_state})`);
+      }
+      lines.push('');
+    }
+
+    lines.push(`Use /dt ${dt.name} list to browse records.`);
+    lines.push(`Use /dt ${dt.name} create to add a new record.`);
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: lines.join('\n'),
+      replyTo: message.id,
+    });
+
+    logger.info({ sender: message.sender, name }, '/doctype command handled');
+  }
+
+  // -------------------------------------------------------------------------
+  // handleDtCommand — /dt {doctype} list|create|{id}
+  // -------------------------------------------------------------------------
+
+  async handleDtCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    // Parse: /dt <doctype> <subcommand-or-id>
+    const match = /^\/dt\s+(\S+)(?:\s+(.+))?$/i.exec(message.content.trim());
+    if (!match) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content:
+          'Usage:\n' +
+          '  /dt <doctype> list — list records\n' +
+          '  /dt <doctype> create — start creation flow\n' +
+          '  /dt <doctype> <id> — show record details\n' +
+          '\nExample: /dt invoice list',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const doctypeName = (match[1] ?? '').trim();
+    const sub = (match[2] ?? '').trim().toLowerCase();
+
+    const memory = this.deps.getMemory();
+    const db = memory?.getDb();
+    if (!db) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'DocType registry unavailable — memory system not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    let full: FullDocType | null = null;
+    try {
+      const { getDocTypeByName } = await import('../intelligence/doctype-store.js');
+      full = getDocTypeByName(db, doctypeName);
+    } catch (err) {
+      logger.warn({ err, doctypeName }, '/dt command: failed to load doctype');
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: `Failed to load DocType "${doctypeName}".`,
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    if (!full) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: `DocType "${doctypeName}" not found.\nUse /doctypes to see all registered DocTypes.`,
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const dt = full.doctype;
+    const tableName = `"${dt.table_name.replace(/"/g, '""')}"`;
+
+    /** Safely convert an unknown SQLite column value to a display string. */
+    const toStr = (v: unknown, fallback = ''): string => {
+      if (v === null || v === undefined) return fallback;
+      if (typeof v === 'string') return v;
+      if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+      return JSON.stringify(v);
+    };
+
+    // ── /dt <doctype> list ──────────────────────────────────────────────────
+    if (!sub || sub === 'list') {
+      try {
+        const rows = db
+          .prepare(`SELECT * FROM ${tableName} ORDER BY created_at DESC LIMIT 20`)
+          .all() as Record<string, unknown>[];
+
+        if (rows.length === 0) {
+          await connector.sendMessage({
+            target: message.source,
+            recipient: message.sender,
+            content: `*${dt.label_plural}*\n\nNo records found.\nUse /dt ${dt.name} create to add one.`,
+            replyTo: message.id,
+          });
+          return;
+        }
+
+        // Pick a display column: prefer 'name', 'title', 'subject', then first text field
+        const textFields = full.fields.filter(
+          (f) => f.field_type === 'text' || f.field_type === 'email' || f.field_type === 'link',
+        );
+        const displayField =
+          textFields.find((f) => ['name', 'title', 'subject', 'label'].includes(f.name)) ??
+          textFields[0];
+
+        const lines: string[] = [`*${dt.label_plural}* (${rows.length} shown)`, ''];
+        for (const row of rows) {
+          const id = toStr(row['id']).slice(-8);
+          const label = displayField
+            ? toStr(row[displayField.name], '—').slice(0, 50)
+            : `Record ${id}`;
+          const status = 'status' in row ? ` [${toStr(row['status']).slice(0, 20)}]` : '';
+          lines.push(`• ${label}${status} — /dt ${dt.name} ${toStr(row['id'])}`);
+        }
+
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: lines.join('\n'),
+          replyTo: message.id,
+        });
+      } catch (err) {
+        logger.warn({ err, doctypeName }, '/dt list: failed to query records');
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: `Failed to list ${dt.label_plural} — table may not be initialized yet.`,
+          replyTo: message.id,
+        });
+      }
+
+      logger.info({ sender: message.sender, doctypeName, sub: 'list' }, '/dt list handled');
+      return;
+    }
+
+    // ── /dt <doctype> create ────────────────────────────────────────────────
+    if (sub === 'create') {
+      const requiredFields = full.fields.filter((f) => f.required && !f.formula);
+      const optionalFields = full.fields.filter((f) => !f.required && !f.formula);
+
+      const lines: string[] = [`*Create ${dt.label_singular}*`, ''];
+
+      if (requiredFields.length > 0) {
+        lines.push('*Required fields:*');
+        for (const f of requiredFields) {
+          const hint = f.options?.length
+            ? ` (${f.options.slice(0, 4).join(' | ')})`
+            : f.field_type !== 'text'
+              ? ` [${f.field_type}]`
+              : '';
+          lines.push(`• ${f.label}${hint}`);
+        }
+      }
+
+      if (optionalFields.length > 0) {
+        lines.push('');
+        lines.push('*Optional fields:*');
+        for (const f of optionalFields.slice(0, 6)) {
+          lines.push(`• ${f.label} [${f.field_type}]`);
+        }
+        if (optionalFields.length > 6) {
+          lines.push(`  … and ${optionalFields.length - 6} more`);
+        }
+      }
+
+      lines.push('');
+      lines.push(`Tell the AI: "Create a ${dt.label_singular} with <field values>"`);
+
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: lines.join('\n'),
+        replyTo: message.id,
+      });
+
+      logger.info({ sender: message.sender, doctypeName, sub: 'create' }, '/dt create handled');
+      return;
+    }
+
+    // ── /dt <doctype> {id} ──────────────────────────────────────────────────
+    const recordId = (match[2] ?? '').trim();
+    try {
+      const row = db.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(recordId) as
+        | Record<string, unknown>
+        | undefined;
+
+      if (!row) {
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: `Record "${recordId}" not found in ${dt.label_plural}.\nUse /dt ${dt.name} list to browse records.`,
+          replyTo: message.id,
+        });
+        return;
+      }
+
+      const lines: string[] = [`*${dt.label_singular} — ${recordId.slice(-8)}*`, ''];
+      for (const f of full.fields) {
+        const val = row[f.name];
+        if (val !== null && val !== undefined && val !== '') {
+          lines.push(`${f.label}: ${toStr(val).slice(0, 100)}`);
+        }
+      }
+
+      // Include any system columns not in field list
+      for (const col of ['status', 'created_at', 'updated_at', 'created_by']) {
+        if (col in row && !full.fields.some((f) => f.name === col)) {
+          lines.push(`${col}: ${toStr(row[col]).slice(0, 60)}`);
+        }
+      }
+
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: lines.join('\n'),
+        replyTo: message.id,
+      });
+    } catch (err) {
+      logger.warn({ err, doctypeName, recordId }, '/dt {id}: failed to fetch record');
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: `Failed to fetch record — table may not be initialized yet.`,
+        replyTo: message.id,
+      });
+    }
+
+    logger.info({ sender: message.sender, doctypeName, sub: 'record' }, '/dt record handled');
+  }
+
+  // -------------------------------------------------------------------------
   // handleHelpCommand
   // -------------------------------------------------------------------------
 
@@ -2836,6 +3442,12 @@ export class CommandHandlers {
       '• /kill <worker-id> — force-stop a stuck worker by ID (partial match supported)',
       '• /stats — show exploration ROI: tokens spent vs tokens saved across all retrievals',
       '• /doctor — run health checks (Node.js, AI tools, config, SQLite, channels) and show summary',
+      '• /process <file> — process a document file (PDF, DOCX, XLSX, image, etc.) and extract key entities, amounts, and dates',
+      '• /doctypes — list all registered DocTypes (business data schemas)',
+      '• /doctype <name> — show DocType details: fields, states, and available actions',
+      '• /dt <name> list — list records for a DocType (most recent 20)',
+      '• /dt <name> create — show creation form with required and optional fields',
+      '• /dt <name> <id> — show a specific record by ID',
       '• /skills — list available skills with descriptions and usage counts',
       '• /skill-packs — list available skill packs (built-in + workspace custom)',
       '',
@@ -3005,6 +3617,792 @@ export class CommandHandlers {
       return `${i + 1}. ${title} — ${s.message_count} ${msgWord} — ${formatDate(s.last_message_at)}`;
     });
     return ['*Conversation History*', '', ...rowLines].join('\n');
+  }
+
+  // -------------------------------------------------------------------------
+  // handleConnectCommand — /connect <integration> [<credential>]
+  // -------------------------------------------------------------------------
+
+  async handleConnectCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const trimmed = message.content.trim();
+    // Parse: /connect [<integration> [<credential>]]
+    // Use [\s\S]+ to capture multiline credentials (e.g. multi-line cURL commands)
+    const match = /^\/connect(?:\s+(\S+)(?:\s+([\s\S]+))?)?$/i.exec(trimmed);
+
+    const sendHelp = async (): Promise<void> => {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content:
+          '*Connect an Integration*\n\n' +
+          'Usage:\n' +
+          '  /connect stripe <api-key>        — Stripe payments\n' +
+          '  /connect google-drive <api-key>  — Google Drive storage\n' +
+          '  /connect api <input>             — Any OpenAPI/REST service\n\n' +
+          'To get started, send the command without a credential to see what is required:\n' +
+          '  /connect stripe',
+        replyTo: message.id,
+      });
+    };
+
+    if (!match || !match[1]) {
+      await sendHelp();
+      return;
+    }
+
+    const integrationName = match[1].toLowerCase();
+    const credential = match[2]?.trim() ?? '';
+
+    // If no credential provided for `api`, check if a file was attached — use it as the spec
+    if (!credential && integrationName === 'api' && message.processedDocument) {
+      const workspacePath = this.deps.getWorkspacePath();
+      const memory = this.deps.getMemory();
+      const db = memory?.getDb();
+      if (workspacePath && db) {
+        await this.handleConnectApiCommand(message, connector, '', workspacePath, db);
+        return;
+      }
+    }
+
+    // If no credential provided, show integration-specific instructions
+    if (!credential) {
+      const instructions: Record<string, string> = {
+        stripe:
+          '*Connect Stripe*\n\nProvide your Stripe secret API key:\n  /connect stripe <sk_live_...or sk_test_...>\n\nFind it at: https://dashboard.stripe.com/apikeys',
+        'google-drive':
+          '*Connect Google Drive*\n\nProvide your Google service account JSON key or OAuth2 token:\n  /connect google-drive <api-key-or-token>\n\nSee Google Cloud Console for credentials.',
+        api:
+          '*Connect any REST/OpenAPI Service*\n\nSend one of the following:\n' +
+          '  /connect api <https://api.example.com/openapi.json>\n    — URL to an OpenAPI/Swagger spec or Postman collection\n' +
+          '  /connect api { "info": { ... }, "item": [...] }\n    — Paste a Postman collection JSON\n' +
+          "  /connect api curl 'https://api.example.com/v1/users' -H 'Authorization: Bearer <token>'\n    — One or more cURL commands (paste multi-line cURL as a single message)\n\n" +
+          'You can also *send a file* (Postman JSON, Swagger YAML, PDF docs) along with /connect api.\n' +
+          'After connecting, a skill pack will be auto-generated and capabilities listed.',
+      };
+
+      const msg =
+        instructions[integrationName] ??
+        `*Connect ${integrationName}*\n\nProvide your API key or credential:\n  /connect ${integrationName} <credential>`;
+
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: msg,
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // Credential provided — encrypt and store
+    const workspacePath = this.deps.getWorkspacePath();
+    const memory = this.deps.getMemory();
+    const db = memory?.getDb();
+
+    if (!workspacePath || !db) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content:
+          'Integration credentials cannot be stored — workspace not initialized. Start the bridge first.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // Use credential store from deps if available, otherwise create a temporary one
+    let credStore = this.deps.getCredentialStore();
+    if (!credStore) {
+      const { CredentialStore: CS } = await import('../integrations/credential-store.js');
+      credStore = new CS(workspacePath);
+    }
+
+    // For `api` integrations, use multi-format detection and parsing
+    if (integrationName === 'api') {
+      await this.handleConnectApiCommand(message, connector, credential, workspacePath, db);
+      return;
+    }
+
+    const credData: Record<string, unknown> = { apiKey: credential };
+
+    try {
+      credStore.storeCredential(db, integrationName, credData);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn({ integrationName, err }, '/connect: failed to store credential');
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: `Failed to store credential for "${integrationName}": ${msg}`,
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    logger.info({ integrationName, sender: message.sender }, '/connect: credential stored');
+
+    // Attempt to initialize via IntegrationHub if the integration is registered
+    const hub = this.deps.getIntegrationHub();
+    let connectionStatus = 'Credential stored and encrypted.';
+
+    if (hub) {
+      try {
+        const config = {
+          name: integrationName,
+          credentialKey: integrationName,
+          options: credData,
+        };
+        await hub.initialize(integrationName, config);
+        connectionStatus = 'Connected and verified successfully.';
+        logger.info({ integrationName }, '/connect: integration initialized via hub');
+      } catch (err) {
+        // Integration may not be registered yet (adapters ship in Phase 120)
+        const errMsg = err instanceof Error ? err.message : String(err);
+        if (errMsg.includes('not found')) {
+          connectionStatus =
+            'Credential stored and encrypted. (Adapter not yet installed — will activate when available.)';
+        } else {
+          connectionStatus = `Credential stored, but connection test failed: ${errMsg}`;
+          logger.warn({ integrationName, err }, '/connect: hub initialization failed');
+        }
+      }
+    }
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: `*${integrationName}* integration: ${connectionStatus}`,
+      replyTo: message.id,
+    });
+
+    logger.info({ sender: message.sender, integrationName }, '/connect command handled');
+  }
+
+  // -------------------------------------------------------------------------
+  // handleConnectApiCommand — multi-format /connect api <input>
+  // -------------------------------------------------------------------------
+
+  private async handleConnectApiCommand(
+    message: InboundMessage,
+    connector: Connector,
+    input: string,
+    workspacePath: string,
+    db: Database.Database,
+  ): Promise<void> {
+    const { detectInputFormat, parseInputToOpenAPI } =
+      await import('../integrations/adapters/openapi-adapter.js');
+
+    // ── File upload path ────────────────────────────────────────────────────
+    // When the user sends a file (Postman JSON, Swagger YAML, PDF API docs)
+    // with /connect api, use the processed document's raw text instead of
+    // the text input. This covers three cases:
+    //   1. /connect api + attached file (input is empty or irrelevant text)
+    //   2. /connect api <some text> + attached file (file takes precedence)
+    //   3. Accumulated doc detected before command routing
+    if (message.processedDocument) {
+      const doc = message.processedDocument;
+      const rawText = doc.rawText?.trim() ?? '';
+
+      if (!rawText) {
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content:
+            'The attached file appears to be empty or could not be read. Please try again with a Postman JSON, Swagger YAML, or PDF/text API documentation.',
+          replyTo: message.id,
+        });
+        return;
+      }
+
+      // Try direct format detection on the raw text first (handles JSON/YAML specs)
+      const docFormat = detectInputFormat(rawText);
+
+      if (docFormat !== 'unknown') {
+        // Known structured format — parse directly
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: `Detected *${docFormat}* format in attached file. Parsing API spec…`,
+          replyTo: message.id,
+        });
+
+        let spec: OpenAPI.Document;
+        try {
+          spec = await parseInputToOpenAPI(rawText);
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          logger.warn({ docFormat, err }, '/connect api: failed to parse document input');
+          await connector.sendMessage({
+            target: message.source,
+            recipient: message.sender,
+            content: `Could not parse the API spec from the attached file (${docFormat}): ${errMsg}`,
+            replyTo: message.id,
+          });
+          return;
+        }
+
+        await this.finalizeApiConnection(message, connector, spec, workspacePath, db);
+        return;
+      }
+
+      // Unknown structured format — fall back to AI-powered doc extraction
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Extracting API endpoints from the attached document using AI…',
+        replyTo: message.id,
+      });
+
+      try {
+        const { docsToOpenAPI } = await import('../integrations/parsers/doc-parser.js');
+        const spec = await docsToOpenAPI(rawText);
+        await this.finalizeApiConnection(message, connector, spec, workspacePath, db);
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        logger.warn({ err }, '/connect api: AI doc extraction failed');
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: `Could not extract API endpoints from the document: ${errMsg}\n\nPlease try a Postman collection JSON or Swagger/OpenAPI YAML/JSON file.`,
+          replyTo: message.id,
+        });
+      }
+      return;
+    }
+
+    // ── Text input path ─────────────────────────────────────────────────────
+    const format = detectInputFormat(input);
+
+    if (format === 'unknown') {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content:
+          "I couldn't recognise the API input format. Please send one of:\n" +
+          '• A URL to a Swagger/OpenAPI spec or Postman collection\n' +
+          '• Postman collection JSON (paste the full JSON)\n' +
+          '• One or more cURL commands starting with `curl `\n' +
+          '• Attach a file (Postman JSON, Swagger YAML, PDF API docs)\n\n' +
+          'Example:\n  /connect api https://petstore.swagger.io/v2/swagger.json',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // Acknowledge receipt and show progress for slow operations
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: `Detected format: *${format}*. Parsing API spec…`,
+      replyTo: message.id,
+    });
+
+    let spec: OpenAPI.Document;
+    try {
+      spec = await parseInputToOpenAPI(input);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.warn({ format, err }, '/connect api: failed to parse input');
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content:
+          `Could not parse the API spec (${format}): ${errMsg}\n\n` +
+          'Please check the input and try again. For cURL, ensure the command starts with `curl `.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    await this.finalizeApiConnection(message, connector, spec, workspacePath, db);
+  }
+
+  /**
+   * finalizeApiConnection — shared finalization for all /connect api paths.
+   * Persists the spec, registers the adapter, reports capabilities, and
+   * kicks off async skill pack generation.
+   */
+  private async finalizeApiConnection(
+    message: InboundMessage,
+    connector: Connector,
+    spec: OpenAPI.Document,
+    workspacePath: string,
+    db: Database.Database,
+  ): Promise<void> {
+    const { OpenAPIAdapter } = await import('../integrations/adapters/openapi-adapter.js');
+    const specDoc = spec as OpenAPIV3.Document;
+    const rawTitle = specDoc.info?.title ?? '';
+    const apiSlug = rawTitle
+      ? rawTitle
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '')
+          .slice(0, 40) || 'custom-api'
+      : 'custom-api';
+
+    const specJson = JSON.stringify(spec);
+
+    // Persist credential so the adapter can be re-created on restart
+    let credStore = this.deps.getCredentialStore();
+    if (!credStore) {
+      const { CredentialStore: CS } = await import('../integrations/credential-store.js');
+      credStore = new CS(workspacePath);
+    }
+
+    try {
+      credStore.storeCredential(db, apiSlug, { specJson });
+    } catch (err) {
+      logger.warn({ apiSlug, err }, '/connect api: failed to store credential');
+      // Non-fatal — proceed without persistence
+    }
+
+    // Register + initialise the OpenAPIAdapter in the hub
+    const hub = this.deps.getIntegrationHub();
+    const adapter = new OpenAPIAdapter(apiSlug);
+
+    let capabilities: IntegrationCapability[] = [];
+    let initError: string | null = null;
+
+    if (hub) {
+      hub.register(adapter);
+      try {
+        await hub.initialize(apiSlug, {
+          name: apiSlug,
+          credentialKey: apiSlug,
+          options: { specJson },
+        });
+        capabilities = adapter.describeCapabilities();
+        logger.info({ apiSlug, capabilities: capabilities.length }, '/connect api: adapter ready');
+      } catch (err) {
+        initError = err instanceof Error ? err.message : String(err);
+        logger.warn({ apiSlug, err }, '/connect api: adapter initialization failed');
+      }
+    } else {
+      try {
+        await adapter.initialize({ name: apiSlug, credentialKey: apiSlug, options: { specJson } });
+        capabilities = adapter.describeCapabilities();
+      } catch {
+        // Ignore — initError stays null, capabilities stays empty
+      }
+    }
+
+    // Build the response message
+    const lines: string[] = [`*${rawTitle || apiSlug}* API connected`];
+
+    if (initError) {
+      lines.push(`⚠️ Connection test failed: ${initError}`);
+    } else {
+      lines.push('✅ Spec parsed and adapter registered.');
+    }
+
+    if (capabilities.length > 0) {
+      lines.push('');
+      lines.push(`*Capabilities (${capabilities.length}):*`);
+      const shown = capabilities.slice(0, 10);
+      for (const cap of shown) {
+        lines.push(`• ${cap.name} — ${cap.description}`);
+      }
+      if (capabilities.length > 10) {
+        lines.push(`… and ${capabilities.length - 10} more`);
+      }
+    } else {
+      lines.push('No capabilities could be extracted from the spec.');
+    }
+
+    lines.push('');
+    lines.push('Generating skill pack in the background…');
+
+    await connector.sendMessage({
+      target: message.source,
+      recipient: message.sender,
+      content: lines.join('\n'),
+      replyTo: message.id,
+    });
+
+    // Async skill pack + workflow template generation — do not block the response
+    import('../integrations/skill-pack-generator.js')
+      .then(async ({ generateSkillPack }) => {
+        const { AgentRunner } = await import('./agent-runner.js');
+        const runner = new AgentRunner();
+        const packPath = await generateSkillPack(spec, workspacePath, runner);
+        if (packPath) {
+          logger.info({ apiSlug, packPath }, '/connect api: skill pack generated');
+          await connector.sendMessage({
+            target: message.source,
+            recipient: message.sender,
+            content: `✅ Skill pack for *${rawTitle || apiSlug}* saved. The Master AI can now use this API conversationally.`,
+          });
+        } else {
+          logger.warn({ apiSlug }, '/connect api: skill pack generation returned null');
+        }
+
+        // Suggest pre-built workflows based on the API spec
+        const { generateDefaultWorkflows } = await import('../integrations/workflow-templates.js');
+        const suggestions = generateDefaultWorkflows(spec);
+        if (suggestions.length > 0) {
+          const lines: string[] = [`🔧 *Suggested workflows for ${rawTitle || apiSlug}:*`, ''];
+          const icons = ['📬', '📊', '🔔'];
+          suggestions.forEach((wf, i) => {
+            lines.push(`${icons[i] ?? '•'} *${wf.name}*`);
+            lines.push(wf.description ?? '');
+            lines.push('');
+          });
+          lines.push(
+            'Reply *approve 1*, *approve 2*, *approve 3*, or *approve all* to enable workflows.',
+          );
+          lines.push('Reply *skip* to skip workflow setup.');
+          await connector.sendMessage({
+            target: message.source,
+            recipient: message.sender,
+            content: lines.join('\n'),
+          });
+          logger.info(
+            { apiSlug, count: suggestions.length },
+            '/connect api: workflow suggestions sent',
+          );
+        }
+      })
+      .catch((err: unknown) => {
+        logger.warn({ apiSlug, err }, '/connect api: skill pack generation failed');
+      });
+
+    logger.info({ sender: message.sender, apiSlug }, '/connect api command handled');
+  }
+
+  // -------------------------------------------------------------------------
+  // handleIntegrationsCommand — /integrations (list all registered integrations)
+  // -------------------------------------------------------------------------
+
+  async handleIntegrationsCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const hub = this.deps.getIntegrationHub();
+
+    if (!hub) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Integration system not available.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    try {
+      const integrations = hub.list();
+
+      if (integrations.length === 0) {
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content:
+            'No integrations registered.\n\nUse `/connect <integration-name>` to connect a service.',
+          replyTo: message.id,
+        });
+        return;
+      }
+
+      // Load last health check times from DB if available
+      const db = this.deps.getMemory()?.getDb();
+      const lastCheckedMap = new Map<string, string>();
+      if (db) {
+        try {
+          const rows = db
+            .prepare(
+              `SELECT integration_name, MAX(checked_at) AS last_checked
+               FROM integration_health_log
+               GROUP BY integration_name`,
+            )
+            .all() as { integration_name: string; last_checked: string }[];
+          for (const row of rows) {
+            lastCheckedMap.set(row.integration_name, row.last_checked);
+          }
+        } catch {
+          // health log table may not exist yet — ignore
+        }
+      }
+
+      // Build formatted list of integrations
+      const lines: string[] = ['*Connected Integrations*', ''];
+
+      for (const integration of integrations) {
+        const status = integration.connected ? '✅ Connected' : '❌ Disconnected';
+        const healthEmoji =
+          integration.healthStatus === 'healthy'
+            ? '💚'
+            : integration.healthStatus === 'degraded'
+              ? '🟡'
+              : integration.healthStatus === 'unhealthy'
+                ? '❌'
+                : '❓';
+        const healthLabel = `${healthEmoji} ${integration.healthStatus}`;
+        const capCount = integration.capabilityCount;
+        const capLabel = capCount === 1 ? 'capability' : 'capabilities';
+
+        lines.push(`• *${integration.name}* (${integration.type})`);
+        lines.push(`  Status: ${status}`);
+        lines.push(`  Health: ${healthLabel}`);
+        lines.push(`  Capabilities: ${capCount} ${capLabel}`);
+
+        const lastChecked = lastCheckedMap.get(integration.name);
+        if (lastChecked) {
+          const date = new Date(lastChecked);
+          lines.push(`  Last checked: ${date.toLocaleString()}`);
+        }
+
+        lines.push('');
+      }
+
+      lines.push(`Use \`/connect <name>\` to connect a new integration.`);
+
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: lines.join('\n'),
+        replyTo: message.id,
+      });
+
+      logger.info(
+        { sender: message.sender, count: integrations.length },
+        '/integrations command handled',
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn({ err }, '/integrations: failed to list integrations');
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: `Failed to list integrations: ${msg}`,
+        replyTo: message.id,
+      });
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // handleWorkflowsCommand — /workflows (list/enable/disable/runs/delete)
+  // -------------------------------------------------------------------------
+
+  async handleWorkflowsCommand(message: InboundMessage, connector: Connector): Promise<void> {
+    const store = this.deps.getWorkflowStore();
+    const engine = this.deps.getWorkflowEngine();
+
+    if (!store) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: 'Workflow engine unavailable — not initialized.',
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const trimmed = message.content.trim();
+    // Parse subcommand: /workflows [list|enable|disable|runs|delete] [id]
+    const match = /^\/workflows(?:\s+(list|enable|disable|runs|delete)(?:\s+(\S+))?)?$/i.exec(
+      trimmed,
+    );
+
+    if (!match) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: [
+          '*Workflow Commands*',
+          '',
+          '/workflows list — show all workflows',
+          '/workflows enable {id} — enable a workflow',
+          '/workflows disable {id} — disable a workflow',
+          '/workflows runs {id} — show run history',
+          '/workflows delete {id} — delete a workflow',
+        ].join('\n'),
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    const sub = (match[1] ?? 'list').toLowerCase();
+    const id = match[2] ?? '';
+
+    // /workflows list (default)
+    if (sub === 'list') {
+      let workflows;
+      try {
+        workflows = store.listWorkflows();
+      } catch (err) {
+        logger.warn({ err }, '/workflows list: failed');
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: 'Failed to list workflows.',
+          replyTo: message.id,
+        });
+        return;
+      }
+
+      if (workflows.length === 0) {
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content:
+            '*Workflows*\n\nNo workflows defined yet.\nAsk the AI to create one: "remind me every morning about overdue invoices"',
+          replyTo: message.id,
+        });
+        return;
+      }
+
+      const lines: string[] = ['*Workflows*', ''];
+      for (const wf of workflows) {
+        const status = wf.status === 'active' ? '✅' : '⏸';
+        const trigger = wf.trigger.type;
+        const runs = wf.run_count ?? 0;
+        lines.push(`${status} *${wf.name}* (\`${wf.id}\`)`);
+        lines.push(`   Trigger: ${trigger} | Runs: ${runs}`);
+      }
+      lines.push('');
+      lines.push('Use /workflows enable {id} or /workflows disable {id} to toggle.');
+
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: lines.join('\n'),
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    // Subcommands that require an id
+    if (!id) {
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: `Usage: /workflows ${sub} {workflow-id}`,
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    if (sub === 'enable') {
+      try {
+        if (engine) {
+          await engine.enableWorkflow(id);
+        } else {
+          store.updateWorkflow(id, { status: 'active' });
+        }
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: `Workflow \`${id}\` enabled.`,
+          replyTo: message.id,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: `Failed to enable workflow: ${msg}`,
+          replyTo: message.id,
+        });
+      }
+      return;
+    }
+
+    if (sub === 'disable') {
+      try {
+        if (engine) {
+          await engine.disableWorkflow(id);
+        } else {
+          store.updateWorkflow(id, { status: 'inactive' });
+        }
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: `Workflow \`${id}\` disabled.`,
+          replyTo: message.id,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: `Failed to disable workflow: ${msg}`,
+          replyTo: message.id,
+        });
+      }
+      return;
+    }
+
+    if (sub === 'runs') {
+      let runs;
+      try {
+        runs = store.listRuns(id, 10);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: `Failed to fetch runs: ${msg}`,
+          replyTo: message.id,
+        });
+        return;
+      }
+
+      if (runs.length === 0) {
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: `No runs found for workflow \`${id}\`.`,
+          replyTo: message.id,
+        });
+        return;
+      }
+
+      const lines: string[] = [`*Run History — \`${id}\`*`, ''];
+      for (const run of runs) {
+        const statusIcon =
+          run.status === 'completed'
+            ? '✅'
+            : run.status === 'failed'
+              ? '❌'
+              : run.status === 'running'
+                ? '⏳'
+                : '⏸';
+        const started = run.started_at ? run.started_at.slice(0, 16).replace('T', ' ') : '—';
+        const duration =
+          run.started_at && run.completed_at
+            ? formatDuration(
+                new Date(run.completed_at).getTime() - new Date(run.started_at).getTime(),
+              )
+            : '—';
+        lines.push(`${statusIcon} \`${run.id}\` — ${started} (${duration})`);
+        if (run.error) lines.push(`   Error: ${run.error.slice(0, 80)}`);
+      }
+
+      await connector.sendMessage({
+        target: message.source,
+        recipient: message.sender,
+        content: lines.join('\n'),
+        replyTo: message.id,
+      });
+      return;
+    }
+
+    if (sub === 'delete') {
+      try {
+        store.deleteWorkflow(id);
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: `Workflow \`${id}\` deleted.`,
+          replyTo: message.id,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await connector.sendMessage({
+          target: message.source,
+          recipient: message.sender,
+          content: `Failed to delete workflow: ${msg}`,
+          replyTo: message.id,
+        });
+      }
+      return;
+    }
   }
 
   /**

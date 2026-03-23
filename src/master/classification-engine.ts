@@ -12,6 +12,8 @@ import type { AgentRunner } from '../core/agent-runner.js';
 import type { ModelRegistry } from '../core/model-registry.js';
 import type { MemoryManager } from '../memory/index.js';
 import type { DotFolderManager } from './dotfolder-manager.js';
+import { getTopSkills } from '../intelligence/skill-creator.js';
+import type { BusinessSkill } from '../intelligence/skill-creator.js';
 import { createLogger } from '../core/logger.js';
 
 const logger = createLogger('classification-engine');
@@ -23,17 +25,16 @@ const logger = createLogger('classification-engine');
 /**
  * Per-turn wall-clock budget in milliseconds.
  * Used to compute per-class timeouts: timeout = CLI_STARTUP_BUDGET_MS + maxTurns × PER_TURN_BUDGET_MS.
- * 30s/turn gives quick-answer(5) = 60+150=210s, tool-use(15) = 60+450=510s, complex-task(25) = 60+750=810s.
+ * 30s/turn gives quick-answer(3) = 30+90=120s, tool-use(15) = 30+450=480s, complex-task(25) = 30+750=780s.
  */
 export const PER_TURN_BUDGET_MS = 30_000;
 
 /**
  * Fixed startup budget added to every timeout.
  * Covers CLI cold-start overhead (model loading, API connection, MCP init).
- * Without this, low-turn tasks (quick-answer=5 turns) can timeout before
- * the CLI even starts generating output.
+ * Claude CLI cold-start is ~10-15s; 30s provides headroom without over-provisioning (OB-F217).
  */
-export const CLI_STARTUP_BUDGET_MS = 60_000;
+export const CLI_STARTUP_BUDGET_MS = 30_000;
 
 /** Compute wall-clock timeout from a turn budget (includes CLI startup overhead). */
 export function turnsToTimeout(maxTurns: number): number {
@@ -42,12 +43,12 @@ export function turnsToTimeout(maxTurns: number): number {
 
 /**
  * Max turns for message processing — varies by task classification.
- * quick-answer: questions, lookups, explanations → 5 turns
+ * quick-answer: questions, lookups, explanations → 3 turns (turnsToTimeout(3) = 120s < 180s DEFAULT_MESSAGE_TIMEOUT)
  * text-generation: articles, strategies, long-form content → 10 turns
  * tool-use: file generation, single edits, targeted fixes → 15 turns
  * complex-task (planning): forces Master to output SPAWN markers → 25 turns
  */
-export const MESSAGE_MAX_TURNS_QUICK = 5;
+export const MESSAGE_MAX_TURNS_QUICK = 3;
 export const MESSAGE_MAX_TURNS_MENU_SELECTION = 2;
 export const MESSAGE_MAX_TURNS_TEXT_GEN = 10;
 export const MESSAGE_MAX_TURNS_TOOL_USE = 15;
@@ -57,7 +58,7 @@ export const MESSAGE_MAX_TURNS_PLANNING = 25;
  * Classifier logic version — bump this when keyword/compound rules change.
  * Cache entries with a different version are treated as stale and re-classified.
  */
-export const CLASSIFIER_VERSION = 4;
+export const CLASSIFIER_VERSION = 6;
 
 /** Maximum number of entries in the in-memory classification cache before LRU eviction (OB-F169). */
 const MAX_CLASSIFICATION_CACHE_SIZE = 10_000;
@@ -94,6 +95,20 @@ export interface ClassificationResult {
   menuSelection?: boolean;
   /** The option text extracted from the previous bot response for this menu selection (OB-1658). */
   selectedOptionText?: string;
+  /** When true, the message matches doctype-creation phrases ("I need to track...", "manage my ...") (OB-1384). */
+  doctypeCreation?: boolean;
+  /** The extracted entity name from the doctype-creation phrase (e.g. "invoices", "customers") (OB-1384). */
+  doctypeEntity?: string;
+  /** When true, the message matches integration-setup phrases ("connect Stripe", "link Google Drive", "add my API") (OB-1396). */
+  integrationSetup?: boolean;
+  /** The extracted integration name from the setup phrase (e.g. "stripe", "google-drive") (OB-1396). */
+  integrationName?: string;
+  /** Name of a learned skill that matches this message (OB-1471). When set, Master should prefer the learned skill. */
+  matchedSkillName?: string;
+  /** English description of the task intent from the AI classifier (OB-F207). Used as a RAG retry query
+   *  when the raw user message (e.g. Arabizi/Darija) returns zero FTS5 results. Only set for successful
+   *  AI classifications — NOT for keyword-fallback paths. */
+  ragQuery?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -339,9 +354,11 @@ export class ClassificationEngine {
       `Categories and turn guidance:\n` +
       `- "quick-answer": question, explanation, or lookup (no file changes) → maxTurns 1-5\n` +
       `- "tool-use": generate/create/write/fix a file or single targeted edit → maxTurns 5-20\n` +
-      `- "complex-task": multi-step work requiring planning, many files, or full implementation → maxTurns 10-30`;
+      `- "complex-task": multi-step work requiring planning, many files, or full implementation → maxTurns 10-30\n\n` +
+      `Include a "confidence" field (0.0-1.0) indicating how confident you are in your classification.`;
 
     let classificationResult: ClassificationResult;
+    let aiResult: (ClassificationResult & { confidence: number }) | null = null;
 
     try {
       const result = await Promise.race([
@@ -349,7 +366,7 @@ export class ClassificationEngine {
           prompt,
           workspacePath: this.deps.workspacePath,
           model: this.deps.modelRegistry.resolveModelOrTier('fast'),
-          maxTurns: 1,
+          maxTurns: 2,
           retries: 0,
         }),
         new Promise<never>((_, reject) =>
@@ -359,6 +376,11 @@ export class ClassificationEngine {
 
       const raw = result.stdout.trim();
 
+      // Log when classifier exhausts turns — indicates maxTurns may still be insufficient
+      if (result.turnsExhausted) {
+        logger.debug('Classifier returned turnsExhausted: true — maxTurns=2 may be insufficient');
+      }
+
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         try {
@@ -366,6 +388,7 @@ export class ClassificationEngine {
           const cls = parsed['class'];
           const turns = parsed['maxTurns'];
           const reason = typeof parsed['reason'] === 'string' ? parsed['reason'] : '';
+          const confidence = typeof parsed['confidence'] === 'number' ? parsed['confidence'] : 0.5;
 
           if (cls === 'quick-answer' || cls === 'tool-use' || cls === 'complex-task') {
             const maxTurns =
@@ -376,97 +399,144 @@ export class ClassificationEngine {
                   : cls === 'tool-use'
                     ? MESSAGE_MAX_TURNS_TOOL_USE
                     : MESSAGE_MAX_TURNS_PLANNING;
-            logger.debug({ class: cls, maxTurns, reason }, 'AI classifier result');
-            classificationResult = {
+            logger.debug({ class: cls, maxTurns, reason, confidence }, 'AI classifier result');
+            aiResult = {
               class: cls,
               maxTurns,
               timeout: turnsToTimeout(maxTurns),
-              reason,
-            };
-          } else {
-            classificationResult = {
-              class: 'tool-use',
-              maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
-              timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
-              reason: 'parse failure default',
+              reason: `AI classifier: ${reason}`,
+              confidence,
+              ragQuery: reason.length > 10 ? reason : undefined,
             };
           }
         } catch {
           const lower = raw.toLowerCase();
           if (lower.includes('quick-answer')) {
-            classificationResult = {
+            aiResult = {
               class: 'quick-answer',
               maxTurns: MESSAGE_MAX_TURNS_QUICK,
               timeout: turnsToTimeout(MESSAGE_MAX_TURNS_QUICK),
-              reason: 'text scan fallback',
+              reason: 'AI classifier: text scan fallback',
+              confidence: 0.3,
             };
           } else if (lower.includes('complex-task')) {
-            classificationResult = {
+            aiResult = {
               class: 'complex-task',
               maxTurns: MESSAGE_MAX_TURNS_PLANNING,
               timeout: turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING),
-              reason: 'text scan fallback',
+              reason: 'AI classifier: text scan fallback',
+              confidence: 0.3,
             };
           } else if (lower.includes('tool-use')) {
-            classificationResult = {
+            aiResult = {
               class: 'tool-use',
               maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
               timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
-              reason: 'text scan fallback',
-            };
-          } else {
-            classificationResult = {
-              class: 'tool-use',
-              maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
-              timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
-              reason: 'parse failure default',
+              reason: 'AI classifier: text scan fallback',
+              confidence: 0.3,
             };
           }
         }
       } else {
         const lower = raw.toLowerCase();
         if (lower.includes('quick-answer')) {
-          classificationResult = {
+          aiResult = {
             class: 'quick-answer',
             maxTurns: MESSAGE_MAX_TURNS_QUICK,
             timeout: turnsToTimeout(MESSAGE_MAX_TURNS_QUICK),
-            reason: 'text scan fallback',
+            reason: 'AI classifier: text scan fallback',
+            confidence: 0.3,
           };
         } else if (lower.includes('complex-task')) {
-          classificationResult = {
+          aiResult = {
             class: 'complex-task',
             maxTurns: MESSAGE_MAX_TURNS_PLANNING,
             timeout: turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING),
-            reason: 'text scan fallback',
+            reason: 'AI classifier: text scan fallback',
+            confidence: 0.3,
           };
         } else if (lower.includes('tool-use')) {
-          classificationResult = {
+          aiResult = {
             class: 'tool-use',
             maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
             timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
-            reason: 'text scan fallback',
+            reason: 'AI classifier: text scan fallback',
+            confidence: 0.3,
           };
         } else {
-          logger.warn(
-            { response: raw },
-            'AI classifier returned unexpected response, defaulting to tool-use',
-          );
-          classificationResult = {
-            class: 'tool-use',
-            maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
-            timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
-            reason: 'parse failure default',
-          };
+          logger.warn({ response: raw }, 'AI classifier returned unexpected response');
         }
       }
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       logger.debug({ reason }, 'AI classifier failed, falling back to keyword heuristics');
-      classificationResult = this.classifyTaskByKeywords(
-        content,
-        recentUserMessages,
-        lastBotResponse,
+    }
+
+    // Run keyword classifier as well for priority comparison
+    const keywordResult = this.classifyTaskByKeywords(content, recentUserMessages, lastBotResponse);
+
+    // Priority: AI classifier (confidence ≥ 0.4) > keyword match > default fallback
+    // Exception: when AI says quick-answer but keyword says higher class, prefer keyword
+    // if confidence is below 0.8 — prevents deployment/build requests from being under-classified (OB-F230)
+    const classRankMap: Record<string, number> = {
+      'quick-answer': 0,
+      'text-generation': 0,
+      'tool-use': 1,
+      'complex-task': 2,
+    };
+    const aiDowngrades =
+      aiResult &&
+      aiResult.confidence >= 0.4 &&
+      aiResult.confidence < 0.8 &&
+      (classRankMap[aiResult.class] ?? 0) < (classRankMap[keywordResult.class] ?? 0);
+
+    if (aiResult && aiResult.confidence >= 0.4 && !aiDowngrades) {
+      classificationResult = {
+        class: aiResult.class,
+        maxTurns: aiResult.maxTurns,
+        timeout: aiResult.timeout,
+        reason: aiResult.reason,
+        ragQuery: aiResult.ragQuery,
+      };
+      if (aiResult.class !== keywordResult.class) {
+        logger.info(
+          {
+            aiClass: aiResult.class,
+            aiConfidence: aiResult.confidence,
+            keywordClass: keywordResult.class,
+            keywordReason: keywordResult.reason,
+            winner: 'ai-classifier',
+          },
+          'Classification conflict: AI classifier (confidence ≥ 0.4) preferred over keyword match',
+        );
+      }
+    } else if (aiDowngrades) {
+      // AI classifier under-classifies with moderate confidence — keyword wins (OB-F230)
+      classificationResult = keywordResult;
+      logger.info(
+        {
+          aiClass: aiResult!.class,
+          aiConfidence: aiResult!.confidence,
+          keywordClass: keywordResult.class,
+          keywordReason: keywordResult.reason,
+          winner: 'keyword-upgrade',
+        },
+        'Classification conflict: keyword match preferred — AI would downgrade with moderate confidence',
       );
+    } else {
+      // Preserve keyword-specific flags (batchMode, doctypeCreation, etc.)
+      classificationResult = keywordResult;
+      if (aiResult) {
+        logger.debug(
+          {
+            aiClass: aiResult.class,
+            aiConfidence: aiResult.confidence,
+            keywordClass: keywordResult.class,
+            winner: 'keyword',
+          },
+          'Classification conflict: keyword match preferred over low-confidence AI classifier',
+        );
+      }
     }
 
     // Apply classification learning: if aggregate data shows this class underperforms,
@@ -486,36 +556,65 @@ export class ClassificationEngine {
           if (
             validClasses.has(learned.model) &&
             learnedRank > currentRank &&
-            learned.success_rate > 0.5 &&
-            currentRank > 0
+            learned.success_rate > 0.5
           ) {
             const escalatedClass = learned.model as ClassificationResult['class'];
-            const escalatedMaxTurns =
-              escalatedClass === 'quick-answer'
-                ? MESSAGE_MAX_TURNS_QUICK
-                : escalatedClass === 'tool-use'
-                  ? MESSAGE_MAX_TURNS_TOOL_USE
-                  : MESSAGE_MAX_TURNS_PLANNING;
-            logger.info(
-              {
-                original: classificationResult.class,
-                escalated: escalatedClass,
-                successRate: learned.success_rate,
-                totalTasks: learned.total_tasks,
-              },
-              'Classification escalated based on learning data',
-            );
-            classificationResult = {
-              class: escalatedClass,
-              maxTurns: escalatedMaxTurns,
-              timeout: turnsToTimeout(escalatedMaxTurns),
-              reason: `${classificationResult.reason} (escalated: ${Math.round(learned.success_rate * 100)}% success rate for ${escalatedClass})`,
-            };
+            // OB-1573: Suppress escalation if efficiency data shows the escalated class
+            // uses few turns/workers — the original class is already sufficient.
+            const efficiency = await this.deps.memory.getTaskEfficiency(escalatedClass);
+            if (
+              efficiency &&
+              efficiency.sample_count >= 5 &&
+              efficiency.avg_turns < 5 &&
+              efficiency.avg_workers <= 1
+            ) {
+              logger.info(
+                {
+                  escalatedClass,
+                  avgTurns: efficiency.avg_turns,
+                  avgWorkers: efficiency.avg_workers,
+                  sampleCount: efficiency.sample_count,
+                },
+                `Escalation suppressed: ${escalatedClass} tasks average ${efficiency.avg_turns.toFixed(1)} turns and ${efficiency.avg_workers.toFixed(1)} workers — original class sufficient`,
+              );
+            } else {
+              const escalatedMaxTurns =
+                escalatedClass === 'quick-answer'
+                  ? MESSAGE_MAX_TURNS_QUICK
+                  : escalatedClass === 'tool-use'
+                    ? MESSAGE_MAX_TURNS_TOOL_USE
+                    : MESSAGE_MAX_TURNS_PLANNING;
+              logger.info(
+                {
+                  original: classificationResult.class,
+                  escalated: escalatedClass,
+                  successRate: learned.success_rate,
+                  totalTasks: learned.total_tasks,
+                },
+                'Classification escalated based on learning data',
+              );
+              classificationResult = {
+                class: escalatedClass,
+                maxTurns: escalatedMaxTurns,
+                timeout: turnsToTimeout(escalatedMaxTurns),
+                reason: `${classificationResult.reason} (escalated: ${Math.round(learned.success_rate * 100)}% success rate for ${escalatedClass})`,
+              };
+            }
           }
         }
       } catch (err) {
         logger.warn({ err }, 'Failed to query classification learning — using original result');
       }
+    }
+
+    // Annotate with matched skill name if a learned skill matches (OB-1471)
+    const matchedSkill = this.findMatchingSkill(content);
+    if (matchedSkill) {
+      classificationResult = { ...classificationResult, matchedSkillName: matchedSkill.name };
+      logger.debug(
+        { skillName: matchedSkill.name, class: classificationResult.class },
+        'Matched learned skill for user message',
+      );
     }
 
     // Store result in cache
@@ -578,7 +677,9 @@ export class ClassificationEngine {
       };
     }
 
-    // Batch Mode keywords (OB-1605)
+    // Batch Mode keywords (OB-1605, OB-1527)
+    // Require compound patterns — single words like 'batch' or 'command' alone must not trigger.
+    // Exclude 'bon de commande' (French purchase order — not a batch command).
     const batchKeywords = [
       'one by one',
       'all tasks',
@@ -588,8 +689,16 @@ export class ClassificationEngine {
       'for each',
       'iterate through',
       'all pending',
+      'batch process',
+      'batch run',
+      'run batch',
+      'batch of',
     ];
-    if (batchKeywords.some((kw) => lower.includes(kw))) {
+    const batchExclusions = ['bon de commande'];
+    if (
+      batchKeywords.some((kw) => lower.includes(kw)) &&
+      !batchExclusions.some((ex) => lower.includes(ex))
+    ) {
       const commitAfterEachKeywords = ['commit after each', 'commit each', 'commit after every'];
       const commitAfterEach = commitAfterEachKeywords.some((kw) => lower.includes(kw));
       return {
@@ -600,6 +709,80 @@ export class ClassificationEngine {
         batchMode: true,
         commitAfterEach: commitAfterEach || undefined,
       };
+    }
+
+    // DocType creation intent detection (OB-1384)
+    const doctypePatterns: { pattern: RegExp; entityGroup: number }[] = [
+      {
+        pattern:
+          /\bi (?:need|want) to (?:track|manage|organize|keep track of)(?: my| our| the)?\s+(.+?)(?:\.|$)/i,
+        entityGroup: 1,
+      },
+      {
+        pattern: /\bcreate (?:a|an)\s+(.+?)\s+(?:entity|doctype|tracker|record|table|system)\b/i,
+        entityGroup: 1,
+      },
+      { pattern: /\bset up\s+(.+?)\s+tracking\b/i, entityGroup: 1 },
+      { pattern: /\bsetup\s+(.+?)\s+tracking\b/i, entityGroup: 1 },
+      { pattern: /\btrack (?:my|our|the)\s+(.+?)(?:\.|$)/i, entityGroup: 1 },
+      { pattern: /\bmanage (?:my|our|the)\s+(.+?)(?:\.|$)/i, entityGroup: 1 },
+    ];
+    for (const { pattern, entityGroup } of doctypePatterns) {
+      const match = pattern.exec(content);
+      if (match) {
+        const entity = match[entityGroup]?.trim().replace(/\s+/g, ' ') ?? 'entity';
+        return {
+          class: 'complex-task',
+          maxTurns: MESSAGE_MAX_TURNS_PLANNING,
+          timeout: turnsToTimeout(MESSAGE_MAX_TURNS_PLANNING),
+          reason: `keyword match: doctype-creation (entity: ${entity})`,
+          doctypeCreation: true,
+          doctypeEntity: entity,
+        };
+      }
+    }
+
+    // Integration setup intent detection (OB-1396)
+    const integrationPatterns: { pattern: RegExp; nameGroup: number }[] = [
+      {
+        pattern:
+          /\bconnect\s+(?:my\s+)?([a-z0-9][\w\s-]{1,30}?)(?:\s+account|\s+api|\s+integration|$|\.|,)/i,
+        nameGroup: 1,
+      },
+      {
+        pattern:
+          /\blink\s+(?:my\s+)?([a-z0-9][\w\s-]{1,30}?)(?:\s+account|\s+api|\s+integration|$|\.|,)/i,
+        nameGroup: 1,
+      },
+      {
+        pattern:
+          /\badd\s+(?:my\s+)?([a-z0-9][\w\s-]{1,30}?)\s+(?:api|key|credentials?|integration)\b/i,
+        nameGroup: 1,
+      },
+      {
+        pattern: /\bintegrate\s+(?:with\s+)?([a-z0-9][\w\s-]{1,30}?)(?:\s+api|$|\.|,)/i,
+        nameGroup: 1,
+      },
+      {
+        pattern:
+          /\bset\s+up\s+(?:my\s+)?([a-z0-9][\w\s-]{1,30}?)\s+(?:api|email|integration|webhook)\b/i,
+        nameGroup: 1,
+      },
+      { pattern: /\benable\s+(?:the\s+)?([a-z0-9][\w\s-]{1,30}?)\s+integration\b/i, nameGroup: 1 },
+    ];
+    for (const { pattern, nameGroup } of integrationPatterns) {
+      const match = pattern.exec(content);
+      if (match) {
+        const rawName = match[nameGroup]?.trim().replace(/\s+/g, '-').toLowerCase() ?? 'api';
+        return {
+          class: 'tool-use',
+          maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
+          timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
+          reason: `keyword match: integration-setup (integration: ${rawName})`,
+          integrationSetup: true,
+          integrationName: rawName,
+        };
+      }
     }
 
     // Deep Mode keywords (OB-1404)
@@ -861,13 +1044,92 @@ export class ClassificationEngine {
       };
     }
 
-    // Default: tool-use — safer than quick-answer for unrecognized actions (OB-F178)
+    // Conversational intent patterns (OB-1526)
+    // Messages that are clearly asking questions or expressing intent without requiring
+    // file access or code changes. Checked before the default so they map to quick-answer
+    // instead of falling through to tool-use.
+    const conversationalPatterns = [
+      'how can i',
+      'can you explain',
+      'i want to know',
+      'what about',
+      'is it possible',
+      "let's configure",
+      'not yet',
+    ];
+    if (conversationalPatterns.some((kw) => lower.includes(kw))) {
+      return {
+        class: 'quick-answer',
+        maxTurns: MESSAGE_MAX_TURNS_QUICK,
+        timeout: turnsToTimeout(MESSAGE_MAX_TURNS_QUICK),
+        reason: 'keyword match: conversational intent → quick-answer',
+      };
+    }
+
+    // Default: quick-answer — unrecognized messages are likely conversational (OB-1529)
+    // If the quick-answer agent needs file access, it can say so and the user re-sends.
+    // Costs 3x less than tool-use (5 turns vs 15 turns).
     return {
-      class: 'tool-use',
-      maxTurns: MESSAGE_MAX_TURNS_TOOL_USE,
-      timeout: turnsToTimeout(MESSAGE_MAX_TURNS_TOOL_USE),
-      reason: 'keyword fallback: tool-use (default)',
+      class: 'quick-answer',
+      maxTurns: MESSAGE_MAX_TURNS_QUICK,
+      timeout: turnsToTimeout(MESSAGE_MAX_TURNS_QUICK),
+      reason: 'keyword fallback: quick-answer (default)',
     };
+  }
+
+  // -------------------------------------------------------------------------
+  // Skill matching (OB-1471)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Check whether the user message matches a learned skill by comparing
+   * significant words against the skill name and description.
+   * Returns the best-matching skill (highest usage × success_rate score) or null.
+   * This is a lightweight synchronous check — skills are loaded from SQLite.
+   */
+  findMatchingSkill(content: string): BusinessSkill | null {
+    const memory = this.deps.memory;
+    if (!memory) return null;
+    const db = memory.getDb();
+    if (!db) return null;
+
+    let skills: BusinessSkill[];
+    try {
+      skills = getTopSkills(db, 20);
+    } catch {
+      return null;
+    }
+    if (skills.length === 0) return null;
+
+    const lower = content.toLowerCase();
+    // Extract significant words (length > 3) from the user message
+    const messageWords = lower
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 3);
+
+    if (messageWords.length === 0) return null;
+
+    let bestSkill: BusinessSkill | null = null;
+    let bestScore = 0;
+
+    for (const skill of skills) {
+      const skillText = `${skill.name} ${skill.description}`.toLowerCase().replace(/-/g, ' ');
+      const matchCount = messageWords.filter((w) => skillText.includes(w)).length;
+      if (matchCount === 0) continue;
+
+      // Score: overlap ratio × effectiveness (usage × successRate)
+      const overlapRatio = matchCount / messageWords.length;
+      const effectiveness = skill.usageCount * skill.successRate;
+      const score = overlapRatio * (1 + effectiveness);
+
+      if (overlapRatio >= 0.3 && score > bestScore) {
+        bestScore = score;
+        bestSkill = skill;
+      }
+    }
+
+    return bestSkill;
   }
 
   // -------------------------------------------------------------------------

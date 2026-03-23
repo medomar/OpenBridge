@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import type Database from 'better-sqlite3';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -116,15 +116,10 @@ describe('database.ts', () => {
       expect(path.isAbsolute(result)).toBe(true);
     });
 
-    it('returns path under ~/.openbridge when in packaged mode', () => {
-      vi.stubGlobal('process', { ...process, pkg: {} });
-      try {
-        const result = resolveDbPath();
-        const expected = path.join(os.homedir(), '.openbridge', 'openbridge.db');
-        expect(result).toBe(expected);
-      } finally {
-        vi.unstubAllGlobals();
-      }
+    it('returns path under process.cwd() when no workspace is given', () => {
+      const result = resolveDbPath();
+      const expected = path.join(process.cwd(), 'openbridge.db');
+      expect(result).toBe(expected);
     });
   });
 });

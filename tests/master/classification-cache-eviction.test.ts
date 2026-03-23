@@ -91,8 +91,11 @@ function makeEntry(key: string, cachedAt: number): ClassificationCacheEntry {
  * Access the private classificationCache map on MasterManager.
  */
 function getCache(manager: MasterManager): Map<string, ClassificationCacheEntry> {
-  return (manager as unknown as { classificationCache: Map<string, ClassificationCacheEntry> })
-    .classificationCache;
+  return (
+    manager as unknown as {
+      classificationEngine: { classificationCache: Map<string, ClassificationCacheEntry> };
+    }
+  ).classificationEngine.classificationCache;
 }
 
 /**
@@ -100,8 +103,8 @@ function getCache(manager: MasterManager): Map<string, ClassificationCacheEntry>
  */
 function evict(manager: MasterManager): void {
   (
-    manager as unknown as { evictClassificationCacheIfNeeded(): void }
-  ).evictClassificationCacheIfNeeded();
+    manager as unknown as { classificationEngine: { evictClassificationCacheIfNeeded(): void } }
+  ).classificationEngine.evictClassificationCacheIfNeeded();
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────

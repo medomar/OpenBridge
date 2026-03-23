@@ -1,51 +1,114 @@
 {
+  "_doc": "OpenBridge Configuration Reference — Every parameter explained. Remove '_*' comment fields before use.",
+
+  "__________ REQUIRED __________": "The 3 fields below are mandatory",
+
   "workspacePath": "/absolute/path/to/your/project",
+  "_workspacePath_note": "Absolute path to the TARGET project (not the OpenBridge folder). The Master AI runs inside this directory with full access to its files, git, and terminal. On startup, it creates .openbridge/ here to store exploration data and memory.",
+
   "channels": [
     {
       "type": "console",
-      "enabled": true
+      "enabled": true,
+      "_note": "Terminal-based chat. No setup needed. Good for testing."
     },
     {
       "type": "whatsapp",
-      "enabled": false
+      "enabled": false,
+      "_note": "WhatsApp via whatsapp-web.js. Displays QR code on first run — scan with WhatsApp > Linked Devices.",
+      "options": {
+        "sessionName": "openbridge-default",
+        "_sessionName_note": "Identifier for persistent login. Change to run multiple WhatsApp accounts.",
+        "headless": true,
+        "_headless_note": "Run browser in headless mode. Set false to see the browser window (debugging).",
+        "reconnect": {
+          "enabled": true,
+          "maxAttempts": 10,
+          "initialDelayMs": 2000,
+          "maxDelayMs": 60000,
+          "backoffFactor": 2,
+          "_note": "Exponential backoff reconnection. initialDelayMs * backoffFactor^attempt, capped at maxDelayMs."
+        }
+      }
     },
     {
       "type": "telegram",
       "enabled": false,
+      "_note": "Telegram bot. Get a token from @BotFather.",
       "options": {
-        "token": "YOUR_TELEGRAM_BOT_TOKEN_HERE"
+        "token": "YOUR_TELEGRAM_BOT_TOKEN_HERE",
+        "botUsername": "your_bot_name",
+        "_botUsername_note": "Without the @. Used for group mention detection (e.g. @your_bot_name in group chats)."
       }
     },
     {
       "type": "discord",
       "enabled": false,
+      "_note": "Discord bot. Get a token from the Discord Developer Portal.",
       "options": {
-        "token": "YOUR_DISCORD_BOT_TOKEN_HERE"
+        "token": "YOUR_DISCORD_BOT_TOKEN_HERE",
+        "applicationId": "YOUR_APPLICATION_ID",
+        "_applicationId_note": "Optional. Application ID from the Developer Portal, for advanced features like slash commands."
       }
     },
     {
       "type": "webchat",
       "enabled": false,
+      "_note": "Browser-based chat UI served over HTTP + WebSocket.",
       "options": {
         "port": 3000,
+        "_port_note": "HTTP server port for the WebChat UI.",
         "host": "0.0.0.0",
-        "_password_note": "Optional: set 'password' to enable login-screen auth instead of the default token. Remove this field to use token auth (default).",
+        "_host_note": "Bind address. Use '0.0.0.0' for all interfaces or 'localhost' to restrict to local-only access.",
+        "_password_note": "Optional: set 'password' to enable login-screen auth instead of the default token-based auth. Token auth auto-generates a 64-char hex token saved to .openbridge/webchat-token — share the URL with ?token=<VALUE>. Password auth shows a login screen; sessions last 24 hours; 5 failed attempts in 15 min = 30 min IP block. Remove this field to use token auth (default).",
         "password": "your-secure-webchat-password"
       }
     }
   ],
+
   "auth": {
     "whitelist": ["+1234567890"],
+    "_whitelist_note": "Phone numbers (E.164 format) or user IDs with access. Required. At least one entry.",
+
     "prefix": "/ai",
-    "_defaultRole_note": "Role assigned to whitelisted users when auto-created. Options: owner (full access), admin (manage users), developer (read + write code), viewer (read-only). Defaults to 'owner' so existing setups keep full access.",
+    "_prefix_note": "Command prefix for messages. Messages starting with this prefix are routed to the AI. Default: '/ai'.",
+
     "defaultRole": "owner",
-    "_channelRoles_note": "Per-channel role overrides — takes precedence over defaultRole for the matching channel type. Useful when you want webchat users to have restricted access while WhatsApp remains owner-level.",
+    "_defaultRole_note": "Role auto-assigned to whitelisted users. Options: owner (full access), admin (manage users + tasks), developer (read + write code), viewer (read-only). Default: 'owner'.",
+
     "channelRoles": {
-      "webchat": "developer",
-      "telegram": "viewer"
+      "webchat": "owner",
+      "telegram": "admin"
+    },
+    "_channelRoles_note": "Per-channel role overrides — takes precedence over defaultRole. Useful when webchat users should have different access than WhatsApp users.",
+
+    "pairingEnabled": true,
+    "_pairingEnabled_note": "Enable 6-digit pairing code for unknown users. When true, unauthenticated users can request a code and be added to the whitelist. Default: true.",
+
+    "rateLimit": {
+      "enabled": true,
+      "maxMessages": 10,
+      "windowMs": 60000,
+      "_note": "Per-user rate limiting. maxMessages per windowMs (in milliseconds). Default: 10 messages per 60 seconds."
+    },
+
+    "commandFilter": {
+      "allowPatterns": [],
+      "denyPatterns": [],
+      "denyMessage": "That command is not allowed.",
+      "_note": "Regex patterns to allow or deny specific commands. denyPatterns are checked first. If allowPatterns is non-empty, only matching commands are allowed."
     }
   },
+
+  "__________ OPTIONAL __________": "Everything below is optional with sensible defaults",
+
   "security": {
+    "trustLevel": "standard",
+    "_trustLevel_note": "AI autonomy level. Options: 'sandbox' (read-only agents, safest), 'standard' (confirmation gates for risky ops, default), 'trusted' (full AI autonomy within workspace, auto-sets confirmHighRisk=false).",
+
+    "confirmHighRisk": true,
+    "_confirmHighRisk_note": "Require user confirmation before high-risk operations (file deletion, git push, etc.). Auto-set to false when trustLevel is 'trusted'. Default: true.",
+
     "envDenyPatterns": [
       "AWS_*",
       "GITHUB_*",
@@ -69,27 +132,78 @@
       "MYSQL_*",
       "POSTGRES_*"
     ],
-    "envAllowPatterns": ["GITHUB_ACTIONS", "GITHUB_WORKSPACE"]
+    "_envDenyPatterns_note": "Glob patterns for env vars to strip from worker processes. Prevents API keys and secrets from leaking to AI agents. These are the defaults — override to customize.",
+
+    "envAllowPatterns": ["GITHUB_ACTIONS", "GITHUB_WORKSPACE"],
+    "_envAllowPatterns_note": "Env vars to always allow even if they match a deny pattern. Whitelist overrides deny.",
+
+    "sensitiveFileExceptions": [".env.example", ".env.sample", ".env.template"],
+    "_sensitiveFileExceptions_note": "File basename patterns excluded from sensitive file detection. Workers can read these even though they look like .env files.",
+
+    "sandbox": {
+      "mode": "none",
+      "_mode_note": "Worker isolation mode. 'none' (no isolation, default), 'docker' (Docker containers), 'bubblewrap' (Linux namespaces, Linux-only).",
+
+      "network": "none",
+      "_network_note": "Worker network access inside sandbox. 'none' (blocked), 'host' (full host network), 'bridge' (Docker bridge only).",
+
+      "memoryMB": 512,
+      "_memoryMB_note": "Memory limit per worker container in MB. Default: 512.",
+
+      "cpus": 1,
+      "_cpus_note": "CPU limit per worker. Supports fractions (e.g., 0.5 for half a core). Default: 1."
+    }
   },
-  "audit": {
-    "enabled": true
+
+  "master": {
+    "tool": "claude",
+    "_tool_note": "Force a specific AI tool as Master. Options: 'claude', 'codex', 'aider'. If omitted, auto-detected from installed tools (picks most capable).",
+
+    "excludeTools": [],
+    "_excludeTools_note": "Tools to exclude from auto-discovery. Example: ['claude'] to force Codex as Master.",
+
+    "explorationPrompt": "",
+    "_explorationPrompt_note": "Custom prompt for workspace exploration. If empty, uses the built-in 5-phase exploration prompt.",
+
+    "sessionTtlMs": 1800000,
+    "_sessionTtlMs_note": "Master session timeout in milliseconds. Default: 1,800,000 (30 minutes). After this, session is renewed.",
+
+    "workerWatchdogMinutes": {
+      "readOnly": 10,
+      "codeEdit": 30,
+      "_note": "Force-kill timeout for stuck workers, in minutes. readOnly: simple read tasks. codeEdit: code modification + full-access tasks."
+    },
+
+    "workerCostCaps": {
+      "read-only": 0.5,
+      "code-edit": 1.0,
+      "code-audit": 1.0,
+      "full-access": 2.0,
+      "_note": "Per-worker cost cap in USD. Worker receives SIGTERM if it exceeds its cap. Override individual profiles as needed."
+    }
   },
-  "_webchat_auth_note": "WebChat supports three auth modes: (1) Token auth [default] — when no password is set, a 64-char hex token is auto-generated and saved to .openbridge/webchat-token; share the URL with ?token=<VALUE> appended; (2) Password auth — set 'password' in the webchat options above; a login screen replaces the token and sessions last 24 hours; after 5 failed attempts in 15 min the IP is blocked for 30 min; (3) Disabled — set 'enabled: false' in the webchat channel entry to turn off WebChat entirely.",
-  "_tunnel_note": "Tunnel exposes the local file server to the internet so the Master can send public URLs to mobile users. Auto-detects cloudflared (preferred), ngrok, or localtunnel. Requires the tool to be installed (e.g. `brew install cloudflared`).",
-  "tunnel": {
-    "enabled": false,
-    "provider": "auto",
-    "_subdomain_note": "Optional: set 'subdomain' to request a specific subdomain (supported by some providers). Remove this field to use a randomly assigned URL.",
-    "subdomain": "my-openbridge"
+
+  "workspace": {
+    "pullInterval": 300,
+    "_pullInterval_note": "Auto-pull interval in seconds for git-based workspaces. Set to 0 to disable. Default: 300 (5 minutes).",
+
+    "include": [],
+    "_include_note": "Glob patterns for files to include. If non-empty, only matching files are visible to AI. Example: ['src/**', 'docs/**'].",
+
+    "exclude": [],
+    "_exclude_note": "Glob patterns for files to exclude. Combined with built-in excludes (.env, *.pem, *.key, node_modules/, .git/objects/, etc.). Example: ['tests/**', '*.log']."
   },
-  "_mcp_note": "MCP integration is scaffolded but not yet fully validated. Enable at your own risk.",
+
   "mcp": {
     "enabled": false,
+    "_enabled_note": "Enable MCP (Model Context Protocol) integration. Allows workers to access external services like Gmail, Canva, Slack via MCP servers. Claude-only feature.",
+
     "servers": [
       {
         "name": "filesystem",
         "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+        "_note": "Each server needs: name (identifier), command (executable), args (arguments). Optional: env (environment variables)."
       },
       {
         "name": "my-service",
@@ -110,6 +224,147 @@
         }
       }
     ],
-    "configPath": "~/.claude/claude_desktop_config.json"
+
+    "configPath": "~/.claude/claude_desktop_config.json",
+    "_configPath_note": "Path to an external MCP config file (Claude Desktop format). If both servers[] and configPath are set, external config is loaded first, then inline servers override same-name imports."
+  },
+
+  "memory": {
+    "embedding": {
+      "provider": "none",
+      "_provider_note": "Embedding provider for vector search. 'none' (FTS5-only, zero dependencies, default), 'local' (Ollama with nomic-embed-text, 768 dims), 'openai' (text-embedding-3-small, 1536 dims, requires OPENAI_API_KEY env var).",
+
+      "model": "",
+      "_model_note": "Model override. Defaults: local → 'nomic-embed-text', openai → 'text-embedding-3-small'. Leave empty to use default.",
+
+      "batchSize": 50,
+      "_batchSize_note": "Number of chunks to embed per batch call. Default: 50.",
+
+      "dimensions": 0,
+      "_dimensions_note": "Vector dimensions. Auto-inferred from provider/model if 0 or omitted. local=768, openai=1536."
+    }
+  },
+
+  "tunnel": {
+    "enabled": false,
+    "_enabled_note": "Expose the local file server to the internet so the Master AI can send public URLs to mobile users (e.g., generated reports, HTML apps).",
+
+    "provider": "auto",
+    "_provider_note": "Tunnel provider. 'auto' (detect installed tool), 'cloudflared' (free, no signup, preferred), 'ngrok' (requires auth token). Requires the tool to be installed (e.g., brew install cloudflared).",
+
+    "subdomain": "my-openbridge",
+    "_subdomain_note": "Preferred subdomain hint. Supported by some providers. Remove to use a randomly assigned URL."
+  },
+
+  "deep": {
+    "defaultProfile": "fast",
+    "_defaultProfile_note": "Deep Mode execution profile. 'fast' (skip Deep Mode, default), 'thorough' (run all 5 phases: investigate → report → plan → execute → verify), 'manual' (pause between phases for user review).",
+
+    "phaseModels": {
+      "investigate": "powerful",
+      "report": "balanced",
+      "plan": "balanced",
+      "execute": "balanced",
+      "verify": "fast",
+      "_note": "Per-phase model tier override. Options: 'fast' (cheapest/fastest), 'balanced' (default), 'powerful' (most capable). Unset phases use 'balanced'."
+    }
+  },
+
+  "batch": {
+    "maxBatchIterations": 20,
+    "_maxBatchIterations_note": "Max iterations before pausing batch execution. Default: 20.",
+
+    "batchBudgetUsd": 5.0,
+    "_batchBudgetUsd_note": "Cumulative cost limit for batch operations in USD. Default: $5.00.",
+
+    "batchTimeoutMinutes": 120,
+    "_batchTimeoutMinutes_note": "Max elapsed time for batch operations in minutes. Default: 120 (2 hours)."
+  },
+
+  "apps": {
+    "maxConcurrent": 5,
+    "_maxConcurrent_note": "Max concurrent app processes (e.g., generated web apps). Default: 5.",
+
+    "maxMemoryMB": 256,
+    "_maxMemoryMB_note": "Memory limit per app process in MB. Default: 256.",
+
+    "idleTimeoutMinutes": 30,
+    "_idleTimeoutMinutes_note": "Auto-stop app after this many minutes of inactivity. Default: 30."
+  },
+
+  "email": {
+    "host": "smtp.example.com",
+    "_host_note": "SMTP server hostname for outbound email (used by SHARE email outputs).",
+
+    "port": 587,
+    "_port_note": "SMTP port. Common values: 587 (TLS), 465 (SSL), 25 (plain). Default: 587.",
+
+    "user": "your-email@example.com",
+    "pass": "your-smtp-password",
+
+    "from": "openbridge@example.com",
+    "_from_note": "Sender email address. Must be a valid email format.",
+
+    "allowlist": [],
+    "_allowlist_note": "Recipient email allowlist. If non-empty, only these addresses can receive emails. Empty = allow all."
+  },
+
+  "worker": {
+    "maxFixIterations": 3,
+    "_maxFixIterations_note": "Max lint/test fix iterations before a worker escalates back to Master. Set to 0 to disable fix attempts. Default: 3."
+  },
+
+  "queue": {
+    "maxRetries": 3,
+    "_maxRetries_note": "Max retry attempts for failed messages in the queue. Default: 3.",
+
+    "retryDelayMs": 1000,
+    "_retryDelayMs_note": "Delay between retries in milliseconds. Default: 1000 (1 second)."
+  },
+
+  "router": {
+    "progressIntervalMs": 15000,
+    "_progressIntervalMs_note": "How often to send progress updates to the user while waiting for AI response, in milliseconds. Default: 15000 (15 seconds).",
+
+    "escalationTimeoutMs": 300000,
+    "_escalationTimeoutMs_note": "Timeout before escalating a stuck request to the Master AI, in milliseconds. Default: 300000 (5 minutes)."
+  },
+
+  "audit": {
+    "enabled": true,
+    "_enabled_note": "Enable audit logging of all message events. Default: true.",
+
+    "logPath": "audit.log",
+    "_logPath_note": "Path to the audit log file (relative to workspace or absolute). Default: 'audit.log'."
+  },
+
+  "health": {
+    "enabled": false,
+    "_enabled_note": "Enable health check HTTP endpoint. Useful for monitoring/alerting. Default: false.",
+
+    "port": 8080,
+    "_port_note": "Port for the health check endpoint. Default: 8080."
+  },
+
+  "metrics": {
+    "enabled": false,
+    "_enabled_note": "Enable metrics collection endpoint (message counts, latency, error rates). Default: false.",
+
+    "port": 9090,
+    "_port_note": "Port for the metrics endpoint. Default: 9090."
+  },
+
+  "logLevel": "info",
+  "_logLevel_note": "Log verbosity. Options: 'trace' (most verbose), 'debug', 'info' (default), 'warn', 'error', 'fatal' (least verbose).",
+
+  "__________ ENV OVERRIDES __________": "These environment variables override config.json values",
+  "_env_overrides": {
+    "OPENBRIDGE_WORKSPACE_PATH": "Override workspacePath",
+    "OPENBRIDGE_CHANNELS": "JSON array override (e.g., '[{\"type\":\"console\",\"enabled\":true}]')",
+    "OPENBRIDGE_AUTH_WHITELIST": "Comma-separated phone numbers (e.g., '+1234567890,+0987654321')",
+    "OPENBRIDGE_AUTH_PREFIX": "Override prefix (e.g., '/bot')",
+    "OPENBRIDGE_LOG_LEVEL": "Override log level",
+    "CONFIG_PATH": "Path to config.json file (default: ./config.json)",
+    "NODE_ENV": "Set to 'production' to disable auto-injection of WebChat in dev mode"
   }
 }

@@ -1,6 +1,6 @@
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 
 /**
  * Resolve a leading `~` or `~/` in a path to the user's home directory.

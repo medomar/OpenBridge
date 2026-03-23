@@ -22,7 +22,14 @@ import {
   searchConversations as _searchConversations,
   type SearchOptions,
 } from './retrieval.js';
-import type { TaskRecord, LearnedParams, ModelStats, LearningsSummary } from './task-store.js';
+import type {
+  TaskRecord,
+  LearnedParams,
+  ModelStats,
+  LearningsSummary,
+  TaskEfficiencyMetrics,
+  TaskEfficiencyRecord,
+} from './task-store.js';
 import {
   recordTask as _recordTask,
   getTasksByType as _getTasksByType,
@@ -31,11 +38,14 @@ import {
   recordLearning as _recordLearning,
   getModelStatsForTask as _getModelStatsForTask,
   getHighSuccessLearnings as _getHighSuccessLearnings,
+  recordTaskEfficiency as _recordTaskEfficiency,
+  getTaskEfficiency as _getTaskEfficiency,
 } from './task-store.js';
 import {
   recordMessage as _recordMessage,
   findRelevantHistory as _findRelevantHistory,
   getSessionHistory as _getSessionHistory,
+  getSessionHistoryForSender as _getSessionHistoryForSender,
   getRecentMessages as _getRecentMessages,
   listSessions as _listSessions,
   searchSessions as _searchSessions,
@@ -120,6 +130,12 @@ import {
   getRecentByType as _getRecentByType,
   type Observation,
 } from './observation-store.js';
+import type { ProcessedDocument } from '../types/intelligence.js';
+import {
+  storeDocument as _storeDocument,
+  getDocument as _getDocument,
+  searchDocuments as _searchDocuments,
+} from '../intelligence/document-store.js';
 import type { DocumentSkill, SkillPack } from '../types/agent.js';
 import {
   loadAllSkillPacks as _loadAllSkillPacks,
@@ -178,6 +194,7 @@ export type { SubMasterEntry, SubMasterStatus } from './sub-master-store.js';
 export type { AuditRecord, AuditSearchOptions, AuditEventType } from './audit-store.js';
 export type { QACacheEntry } from './qa-cache-store.js';
 export type { Observation } from './observation-store.js';
+export type { ProcessedDocument } from '../types/intelligence.js';
 export type { DocumentSkill, SkillPack } from '../types/agent.js';
 export type { AllSkillPacksResult } from '../master/skill-pack-loader.js';
 
@@ -324,6 +341,16 @@ export class MemoryManager {
     return Promise.resolve(_getSessionHistory(this.db, sessionId, limit));
   }
 
+  /** Return the most recent messages for a given session and sender (OB-1544). */
+  getSessionHistoryForSender(
+    sessionId: string,
+    sender: string,
+    limit?: number,
+  ): Promise<ConversationEntry[]> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_getSessionHistoryForSender(this.db, sessionId, sender, limit));
+  }
+
   /** Return the most recent messages across all sessions (user + master roles), chronologically (OB-1116). */
   getRecentMessages(limit?: number): Promise<ConversationEntry[]> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
@@ -343,9 +370,13 @@ export class MemoryManager {
   }
 
   /** BM25-ranked cross-session FTS5 search over conversations (OB-1025). */
-  searchConversations(query: string, limit?: number): Promise<ConversationEntry[]> {
+  searchConversations(
+    query: string,
+    limit?: number,
+    userId?: string,
+  ): Promise<ConversationEntry[]> {
     if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
-    return Promise.resolve(_searchConversations(this.db, query, limit));
+    return Promise.resolve(_searchConversations(this.db, query, limit, userId));
   }
 
   // -------------------------------------------------------------------------
@@ -439,6 +470,21 @@ export class MemoryManager {
         bestModel: r.best_model ?? 'unknown',
       })),
     );
+  }
+
+  // -------------------------------------------------------------------------
+  // Task Efficiency (task-store.ts — OB-1572)
+  // -------------------------------------------------------------------------
+
+  recordTaskEfficiency(taskClass: string, metrics: TaskEfficiencyMetrics): Promise<void> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    _recordTaskEfficiency(this.db, taskClass, metrics);
+    return Promise.resolve();
+  }
+
+  getTaskEfficiency(taskClass: string): Promise<TaskEfficiencyRecord | null> {
+    if (!this.db) return Promise.reject(new Error('MemoryManager not initialised'));
+    return Promise.resolve(_getTaskEfficiency(this.db, taskClass));
   }
 
   // -------------------------------------------------------------------------
@@ -1298,6 +1344,25 @@ export class MemoryManager {
       totalRetrievals: row.total_retrievals,
       chunksTracked: row.chunks_tracked,
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // Document intelligence (document-store.ts — OB-1345/1346)
+  // -------------------------------------------------------------------------
+
+  storeDocument(doc: ProcessedDocument): string {
+    if (!this.db) throw new Error('MemoryManager not initialised');
+    return _storeDocument(this.db, doc);
+  }
+
+  getDocument(documentId: string): ProcessedDocument | null {
+    if (!this.db) throw new Error('MemoryManager not initialised');
+    return _getDocument(this.db, documentId);
+  }
+
+  searchDocuments(query: string, limit?: number): ProcessedDocument[] {
+    if (!this.db) throw new Error('MemoryManager not initialised');
+    return _searchDocuments(this.db, query, limit);
   }
 }
 

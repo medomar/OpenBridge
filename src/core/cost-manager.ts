@@ -6,8 +6,19 @@
  */
 
 import { createLogger } from './logger.js';
+import type { WorkspaceTrustLevel } from '../types/config.js';
 
 const logger = createLogger('cost-manager');
+
+/**
+ * Cost multipliers per trust level. Trusted mode allows higher spending;
+ * sandbox mode constrains it; standard mode is the baseline (1×).
+ */
+const TRUST_COST_MULTIPLIER: Record<WorkspaceTrustLevel, number> = {
+  sandbox: 0.5,
+  standard: 1,
+  trusted: 3,
+};
 
 /**
  * Default per-profile cost caps in USD.
@@ -23,18 +34,23 @@ export const PROFILE_COST_CAPS: Record<string, number> = {
 
 /**
  * Get the cost cap in USD for a given tool profile.
- * Returns the cap from `overrides` first, then `PROFILE_COST_CAPS`.
+ * Scales the base cap by `trustLevel` multiplier (sandbox: 0.5×, standard: 1×, trusted: 3×).
+ * User-configured `overrides` always win over the scaled value.
  * Returns `undefined` if the profile is unknown or no cap is configured.
  */
 export function getProfileCostCap(
   profile: string | undefined,
   overrides?: Record<string, number>,
+  trustLevel?: WorkspaceTrustLevel,
 ): number | undefined {
   if (!profile) return undefined;
+  const baseCap = PROFILE_COST_CAPS[profile];
+  if (baseCap === undefined) return undefined;
+  const scaledCap = baseCap * TRUST_COST_MULTIPLIER[trustLevel ?? 'standard'];
   if (overrides && Object.prototype.hasOwnProperty.call(overrides, profile)) {
     return overrides[profile];
   }
-  return PROFILE_COST_CAPS[profile];
+  return scaledCap;
 }
 
 /**
@@ -95,25 +111,69 @@ export function resetProfileCostAverages(): void {
 }
 
 /**
+ * Check whether a worker's cumulative cost has exceeded its cap.
+ *
+ * Returns `true` when `currentCost >= maxCost`, indicating the worker should
+ * be killed. Returns `false` when under the cap.
+ */
+export function checkCostCap(currentCost: number, maxCost: number): boolean {
+  return currentCost >= maxCost;
+}
+
+/**
+ * Build a consistent cost-cap warning message for logging and result summaries.
+ *
+ * @param workerId     Identifier for the worker (e.g. "worker-abc123")
+ * @param currentCost  Cost accumulated so far in USD
+ * @param maxCost      Cap threshold in USD
+ * @param model        Model name (e.g. "claude-opus-4-6") or undefined
+ */
+export function formatCostWarning(
+  workerId: string,
+  currentCost: number,
+  maxCost: number,
+  model: string | undefined,
+): string {
+  const modelStr = model ?? 'unknown-model';
+  return (
+    `Worker ${workerId} cost-capped: $${currentCost.toFixed(4)} >= $${maxCost.toFixed(4)}` +
+    ` (model: ${modelStr}) — output may be incomplete`
+  );
+}
+
+/**
  * Estimate the cost in USD for a single agent call.
- * Uses a simple per-call heuristic scaled by output size:
- *   haiku  = $0.001 base + $0.0001 per KB of output
- *   sonnet = $0.01  base + $0.001  per KB of output
- *   opus   = $0.05  base + $0.005  per KB of output
- * Falls back to sonnet pricing for unknown / undefined models.
+ * Uses a simple per-call heuristic scaled by output size.
+ *
+ * Pricing tiers (Anthropic pricing as of v0.1.0):
+ *   Haiku 4.5   (claude-haiku-4-5-*): $1/MTok input,  $5/MTok output
+ *     → base $0.001  + $0.00128 per KB output
+ *   Sonnet 4.6  (claude-sonnet-4-6):  $3/MTok input, $15/MTok output
+ *     → base $0.003  + $0.00384 per KB output
+ *   Opus 4.6    (claude-opus-4-6):    $5/MTok input, $25/MTok output
+ *     → base $0.005  + $0.0064  per KB output
+ *
+ * Per-KB multiplier derivation: price/MTok × (1024 bytes / 4 bytes-per-token) / 1_000_000
+ * Falls back to Sonnet 4.6 pricing for unknown / undefined models.
  */
 export function estimateCostUsd(model: string | undefined, outputBytes: number): number {
   const outputKb = outputBytes / 1024;
   const modelKey = (model ?? '').toLowerCase();
 
-  if (modelKey.includes('haiku')) {
-    return 0.001 + outputKb * 0.0001;
+  // Haiku 4.5: $1/MTok input, $5/MTok output
+  if (modelKey.includes('haiku') || /haiku.*4[.-]5/.test(modelKey)) {
+    return 0.001 + outputKb * 0.00128;
   }
-  if (modelKey.includes('opus')) {
-    return 0.05 + outputKb * 0.005;
+  // Opus 4.6: $5/MTok input, $25/MTok output
+  if (modelKey.includes('opus') || /opus.*4[.-]6/.test(modelKey)) {
+    return 0.005 + outputKb * 0.0064;
   }
-  // Default / sonnet
-  return 0.01 + outputKb * 0.001;
+  // Codex / OpenAI models (gpt-5.x): ~2.5x Claude Sonnet pricing
+  if (modelKey.includes('codex') || modelKey.includes('gpt-5') || modelKey.includes('gpt-4o')) {
+    return 0.008 + outputKb * 0.0096;
+  }
+  // Default / Sonnet 4.6: $3/MTok input, $15/MTok output
+  return 0.003 + outputKb * 0.00384;
 }
 
 /**
