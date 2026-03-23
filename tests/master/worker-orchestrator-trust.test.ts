@@ -251,7 +251,7 @@ describe('escalation dedup (OB-F214)', () => {
 
     // Profile with 3+ escalated suffixes triggers the depth guard
     await orchestrator.respawnWorkerAfterGrant(
-      'worker-3',
+      'worker-3-escalated-escalated-escalated',
       makeMarker(),
       0,
       'code-edit-escalated-escalated-escalated', // 3 -escalated suffixes = depth 3

@@ -758,8 +758,8 @@ describe('MasterManager', () => {
       const response = await masterManager.processMessage(message);
 
       // Should return user-friendly timeout message instead of throwing (OB-1663)
-      expect(response).toContain('timed out after 120 seconds');
-      expect(response).toContain('Please try a simpler request');
+      expect(response).toContain('timed out after 120s');
+      expect(response).toContain('Try sending each step separately');
       // State must be reset to ready so subsequent messages can be processed
       expect(masterManager.getState()).toBe('ready');
     });
@@ -1818,7 +1818,7 @@ describe('MasterManager', () => {
         );
       });
 
-      it('falls back to tool-use when AI returns an unrecognised response', async () => {
+      it('falls back to quick-answer when AI returns an unrecognised response', async () => {
         mockSpawn.mockResolvedValueOnce({
           exitCode: 0,
           stdout: 'I cannot determine the category',
@@ -1827,7 +1827,7 @@ describe('MasterManager', () => {
           durationMs: 100,
         });
         expect((await masterManager.classifyTask('provide me a HTML Preview')).class).toBe(
-          'tool-use',
+          'quick-answer',
         );
       });
 
@@ -1846,7 +1846,7 @@ describe('MasterManager', () => {
         expect(result.class).toBe('complex-task');
         expect(result.maxTurns).toBe(20);
         expect(result.timeout).toBe(30_000 + 20 * 30_000); // 630_000ms (startup + turns)
-        expect(result.reason).toBe('full-stack app requires multi-step planning');
+        expect(result.reason).toBe('AI classifier: full-stack app requires multi-step planning');
       });
 
       it('returns AI-suggested maxTurns and derived timeout in the result', async () => {
@@ -2052,20 +2052,20 @@ describe('MasterManager', () => {
 
         const response = await masterManager.processMessage(message);
 
-        // Two spawn calls: AI classifier + task execution
+        // Three spawn calls: AI classifier (maxTurns=2) + task execution
         expect(mockSpawn).toHaveBeenCalledTimes(2);
 
-        // First call is the AI classifier: haiku, maxTurns=1
+        // First call is the AI classifier: haiku, maxTurns=2
         const classifierCall = getSpawnCallOpts(0);
         expect(classifierCall?.model).toBe('haiku');
-        expect(classifierCall?.maxTurns).toBe(1);
+        expect(classifierCall?.maxTurns).toBe(2);
         expect(classifierCall?.prompt).toContain('provide me a HTML Preview');
 
         // Second call uses the AI-classified maxTurns (12), not keyword default (3 or 10)
         const taskCall = getSpawnCallOpts(1);
         expect(taskCall?.maxTurns).toBe(12);
-        // Timeout is derived from AI-classified maxTurns: 30s startup + 12 × 30s = 390s
-        expect(taskCall?.timeout).toBe(30_000 + 12 * 30_000);
+        // Timeout clamped to DEFAULT_MESSAGE_TIMEOUT (300s) — turnsToTimeout(12) = 390s > 300s
+        expect(taskCall?.timeout).toBe(300_000);
 
         expect(response).toBe('preview.html has been created.');
       });
@@ -2131,15 +2131,15 @@ describe('MasterManager', () => {
         // Call 0: AI classifier with haiku
         const classifierCall = getSpawnCallOpts(0);
         expect(classifierCall?.model).toBe('haiku');
-        expect(classifierCall?.maxTurns).toBe(1);
+        expect(classifierCall?.maxTurns).toBe(2);
 
         // Call 1: Planning prompt (complex-task → planning flow)
         const planningCall = getSpawnCallOpts(1);
         expect(planningCall?.prompt).toContain('provide me a full-stack auth system');
         expect(planningCall?.prompt).toContain('SPAWN');
         expect(planningCall?.maxTurns).toBe(25); // MESSAGE_MAX_TURNS_PLANNING
-        // Timeout derived from planning turns: 30s startup + 25 × 30s = 780s
-        expect(planningCall?.timeout).toBe(30_000 + 25 * 30_000);
+        // Timeout clamped to DEFAULT_MESSAGE_TIMEOUT (300s) — turnsToTimeout(25) = 780s > 300s
+        expect(planningCall?.timeout).toBe(300_000);
 
         // Call 2: Worker with code-edit profile tools
         const workerCall = getSpawnCallOpts(2);
@@ -2183,8 +2183,8 @@ describe('MasterManager', () => {
         // Task execution uses keyword-fallback maxTurns for tool-use (15)
         const taskCall = getSpawnCallOpts(1);
         expect(taskCall?.maxTurns).toBe(15);
-        // Timeout derived from keyword-fallback turns: 30s startup + 15 × 30s = 480s
-        expect(taskCall?.timeout).toBe(30_000 + 15 * 30_000);
+        // Timeout clamped to DEFAULT_MESSAGE_TIMEOUT (300s) — turnsToTimeout(15) = 480s > 300s
+        expect(taskCall?.timeout).toBe(300_000);
 
         expect(response).toBe('queue.ts fixed.');
       });
@@ -2235,6 +2235,8 @@ describe('MasterManager', () => {
           avg_turns: 10,
           total_tasks: 30,
         });
+        // Ensure getTaskEfficiency returns null so escalation is not suppressed
+        vi.spyOn(memoryManager, 'getTaskEfficiency').mockResolvedValue(null);
 
         // "fix the bug in queue.ts" classifies as tool-use by keywords
         const result = await masterManager.classifyTask('fix the bug in queue.ts');

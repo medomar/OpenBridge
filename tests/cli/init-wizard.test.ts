@@ -238,6 +238,7 @@ describe('runInit() — health check integration', () => {
       '/home/user/project', // workspace path
       '5', // connector: Console
       '1', // default role: owner (step 8)
+      '2', // trust level: standard
       'n', // MCP: skip
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -253,7 +254,15 @@ describe('runInit() — health check integration', () => {
       checks: [{ name: 'Config file', passed: true, message: 'config.json is valid' }],
     });
 
-    const { input, output } = createLineFeeder(['4', '/home/user/project', '5', '1', 'n', 'Y']);
+    const { input, output } = createLineFeeder([
+      '4',
+      '/home/user/project',
+      '5',
+      '1',
+      '2',
+      'n',
+      'Y',
+    ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
 
@@ -269,7 +278,15 @@ describe('runInit() — health check integration', () => {
       ],
     });
 
-    const { input, output } = createLineFeeder(['4', '/home/user/project', '5', '1', 'n', 'Y']);
+    const { input, output } = createLineFeeder([
+      '4',
+      '/home/user/project',
+      '5',
+      '1',
+      '2',
+      'n',
+      'Y',
+    ]);
 
     await runInit({ input, output, outputPath: testConfigPath });
 

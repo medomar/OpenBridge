@@ -160,10 +160,10 @@ describe('CodexAdapter.getPromptBudget', () => {
     expect(budget.maxPromptChars).toBe(budget.maxSystemPromptChars);
   });
 
-  it('returns a combined budget of 100_000 chars', () => {
+  it('returns a combined budget of 400_000 chars', () => {
     const budget = adapter.getPromptBudget();
-    expect(budget.maxPromptChars).toBe(100_000);
-    expect(budget.maxSystemPromptChars).toBe(100_000);
+    expect(budget.maxPromptChars).toBe(400_000);
+    expect(budget.maxSystemPromptChars).toBe(400_000);
   });
 
   it('returns the same budget regardless of model', () => {

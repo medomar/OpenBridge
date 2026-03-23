@@ -1,14 +1,14 @@
 # OpenBridge — Roadmap
 
-> **Last Updated:** 2026-03-18 | **Current Version:** v0.1.3
-> **1672 tasks shipped, 230 findings fixed** across v0.0.1–v0.1.3. Clean slate for next cycle.
+> **Last Updated:** 2026-03-23 | **Current Version:** v0.1.0
+> **1672 tasks shipped, 230 findings fixed** across v0.0.1–v0.1.0. Clean slate for next cycle.
 > See [docs/audit/FINDINGS.md](docs/audit/FINDINGS.md) | [docs/audit/FUTURE.md](docs/audit/FUTURE.md).
 
 This document outlines what has shipped and the vision for future development. For detailed future feature specs, see [docs/audit/FUTURE.md](docs/audit/FUTURE.md).
 
 ---
 
-## Released (v0.0.1 — v0.1.3)
+## Released (v0.0.1 — v0.1.0)
 
 Everything that shipped — 1672 tasks across 169 phases.
 
@@ -121,13 +121,13 @@ Everything that shipped — 1672 tasks across 169 phases.
 | Skill packs — cloud storage, web deploy, spreadsheet handler, file converter (OB-F178/F179/F180/F181)                            | 126     | v0.1.0   | Shipped |
 | Worker permissions & Agent SDK integration — canUseTool relay, trust levels (OB-F182/F183)                                       | 127     | v0.1.0   | Shipped |
 | WebChat file upload fix — structured attachments + document processing (OB-F191)                                                 | —       | v0.1.0   | Shipped |
-| Real-world testing fixes — workspace map persistence, prompt budget 32K, worker cost caps, activity tracking                     | 128–132 | v0.1.1   | Shipped |
-| Model budgets, prompt size cap fix, WebChat session isolation, worker file ops, trust level system, workspace boundary hardening | 133–151 | v0.1.2   | Shipped |
-| Escalation loop fix, Docker health cleanup, system prompt budget, quick-answer timeout, streaming retry, Codex cost fix          | 152–157 | v0.1.3   | Shipped |
-| Channel/role context injection, remote file/app delivery, integration tests for remote deploy                                    | 158–160 | v0.1.3   | Shipped |
-| DLQ error response, classifier fix, exploration data integrity, worker boundary protection                                       | 161–163 | v0.1.3   | Shipped |
-| Headless worker safety, message queueing during processing, quick-answer timeout regression                                      | 164–166 | v0.1.3   | Shipped |
-| First-run log noise cleanup, integration tests for real-world fixes, classification escalation + max-turns UX                    | 167–169 | v0.1.3   | Shipped |
+| Real-world testing fixes — workspace map persistence, prompt budget 32K, worker cost caps, activity tracking                     | 128–132 | v0.1.0   | Shipped |
+| Model budgets, prompt size cap fix, WebChat session isolation, worker file ops, trust level system, workspace boundary hardening | 133–151 | v0.1.0   | Shipped |
+| Escalation loop fix, Docker health cleanup, system prompt budget, quick-answer timeout, streaming retry, Codex cost fix          | 152–157 | v0.1.0   | Shipped |
+| Channel/role context injection, remote file/app delivery, integration tests for remote deploy                                    | 158–160 | v0.1.0   | Shipped |
+| DLQ error response, classifier fix, exploration data integrity, worker boundary protection                                       | 161–163 | v0.1.0   | Shipped |
+| Headless worker safety, message queueing during processing, quick-answer timeout regression                                      | 164–166 | v0.1.0   | Shipped |
+| First-run log noise cleanup, integration tests for real-world fixes, classification escalation + max-turns UX                    | 167–169 | v0.1.0   | Shipped |
 
 ---
 
@@ -228,43 +228,36 @@ Clean slate — ready for new planning and implementation. See [docs/audit/FUTUR
                                                              ├── Phase 126: Skill Packs (Cloud, Deploy, Spreadsheet, Convert)
                                                              └── Phase 127: Worker Permissions & Agent SDK
                                                                    │
-                                                                   │  ── v0.1.1–v0.1.3: Real-World Hardening ──
+                                                                   │  ── v0.1.0: Real-World Hardening ──
                                                                    │
-                                                                   ├──► ✅ v0.1.1: 25 tasks (Phases 128–132)
-                                                                   ├──► ✅ v0.1.2: 76 tasks (Phases 133–151)
-                                                                   └──► ✅ v0.1.3: 66 tasks, 17 findings (Phases 152–169)
-                                                                        ├── Phases 152–157: Escalation, Docker, prompt budget, timeout, streaming, Codex cost
-                                                                        ├── Phases 158–160: Channel injection, remote delivery, integration tests
-                                                                        ├── Phases 161–163: DLQ response, classifier, exploration integrity, worker boundaries
-                                                                        ├── Phases 164–166: Headless safety, message queueing, timeout regression
-                                                                        └── Phases 167–169: Log cleanup, integration tests, classification escalation
+                                                                   └──► ✅ Phases 128–169: 167 tasks, 37 findings
+                                                                        ├── Phases 128–132: Workspace map, prompt budget, cost caps, classification
+                                                                        ├── Phases 133–151: Model budgets, trust system, workspace boundaries
+                                                                        └── Phases 152–169: Escalation, DLQ, message queueing, headless safety
 ```
 
 ---
 
 ## Version Milestones
 
-| Version     | Status | Key Features                                                                                              | Tasks |
-| ----------- | ------ | --------------------------------------------------------------------------------------------------------- | ----- |
-| **v0.0.1**  | Done   | Foundation — 5 connectors, self-governing Master, AI discovery, memory system                             | 310   |
-| **v0.0.2**  | Done   | Exploration progress, worker resilience, worker control, responsive Master                                | 42    |
-| **v0.0.3**  | Done   | Prompt library, memory.md, history, schema versioning, streaming, checkpointing                           | 50    |
-| **v0.0.4**  | Done   | Codex provider + adapter fixes, MCP integration (config, isolation, health)                               | 41    |
-| **v0.0.5**  | Done   | FTS5 sanitization, memory.md context injection, graceful shutdown                                         | 21    |
-| **v0.0.6**  | Done   | WhatsApp/Telegram media, MCP dashboard fixes                                                              | 14    |
-| **v0.0.7**  | Done   | Telegram/Discord message splitting, live context fixes                                                    | 18    |
-| **v0.0.8**  | Done   | Voice transcription API, enhanced CLI wizard                                                              | 95    |
-| **v0.0.9**  | Done   | Classification fixes, code-audit profile, exploration bugs, data cleanup                                  | 34    |
-| **v0.0.10** | Done   | RAG knowledge retrieval, env var protection                                                               | 43    |
-| **v0.0.11** | Done   | Master output sharing, user consent                                                                       | 20    |
-| **v0.0.12** | Done   | Deep Mode, WebChat, tunnel, Docker, escalation, batch, runtime fixes                                      | 281   |
-| **v0.0.13** | Done   | Structured observations, session compaction, role UX, document gen, vector search                         | 126   |
-| **v0.0.14** | Done   | Skill pack extensions, design/creative output, agent orchestration patterns                               | 50    |
-| **v0.0.15** | Done   | Deep stability audit — prompt budget, classification, god-class refactoring, memory leaks, process safety | 93    |
-| **v0.1.0**  | Done   | Business platform — document intelligence, DocType engine, integration hub, workflow engine, Agent SDK    | 173   |
-| **v0.1.1**  | Done   | Real-world testing fixes — workspace map persistence, prompt budget 32K, worker cost caps                 | 25    |
-| **v0.1.2**  | Done   | Model budgets, prompt size cap, WebChat session isolation, trust level system, workspace boundaries       | 76    |
-| **v0.1.3**  | Done   | Real-world fixes — escalation, DLQ, classification, worker boundaries, headless safety, message queueing  | 66    |
+| Version     | Status | Key Features                                                                                                                                   | Tasks |
+| ----------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| **v0.0.1**  | Done   | Foundation — 5 connectors, self-governing Master, AI discovery, memory system                                                                  | 310   |
+| **v0.0.2**  | Done   | Exploration progress, worker resilience, worker control, responsive Master                                                                     | 42    |
+| **v0.0.3**  | Done   | Prompt library, memory.md, history, schema versioning, streaming, checkpointing                                                                | 50    |
+| **v0.0.4**  | Done   | Codex provider + adapter fixes, MCP integration (config, isolation, health)                                                                    | 41    |
+| **v0.0.5**  | Done   | FTS5 sanitization, memory.md context injection, graceful shutdown                                                                              | 21    |
+| **v0.0.6**  | Done   | WhatsApp/Telegram media, MCP dashboard fixes                                                                                                   | 14    |
+| **v0.0.7**  | Done   | Telegram/Discord message splitting, live context fixes                                                                                         | 18    |
+| **v0.0.8**  | Done   | Voice transcription API, enhanced CLI wizard                                                                                                   | 95    |
+| **v0.0.9**  | Done   | Classification fixes, code-audit profile, exploration bugs, data cleanup                                                                       | 34    |
+| **v0.0.10** | Done   | RAG knowledge retrieval, env var protection                                                                                                    | 43    |
+| **v0.0.11** | Done   | Master output sharing, user consent                                                                                                            | 20    |
+| **v0.0.12** | Done   | Deep Mode, WebChat, tunnel, Docker, escalation, batch, runtime fixes                                                                           | 281   |
+| **v0.0.13** | Done   | Structured observations, session compaction, role UX, document gen, vector search                                                              | 126   |
+| **v0.0.14** | Done   | Skill pack extensions, design/creative output, agent orchestration patterns                                                                    | 50    |
+| **v0.0.15** | Done   | Deep stability audit — prompt budget, classification, god-class refactoring, memory leaks, process safety                                      | 93    |
+| **v0.1.0**  | Done   | Business platform — document intelligence, DocType engine, integration hub, workflow engine, model budgets, trust system, real-world hardening | 340   |
 
 **Total shipped: 1672 tasks across 169 phases.**
 

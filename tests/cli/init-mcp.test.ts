@@ -198,6 +198,7 @@ describe('runInit() — MCP interactive flow', () => {
       '/proj', // workspace path
       '5', // connector: Console
       '1', // default role: owner (step 8)
+      '2', // trust level: standard
       'n', // skip MCP
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -215,6 +216,7 @@ describe('runInit() — MCP interactive flow', () => {
       '/proj', // workspace path
       '5', // connector: Console
       '1', // default role: owner (step 8)
+      '2', // trust level: standard
       'N', // skip MCP
       'Y', // Visibility: auto-hide sensitive files
     ]);
@@ -232,6 +234,7 @@ describe('runInit() — MCP interactive flow', () => {
       '/proj', // workspace path
       '5', // connector: Console
       '1', // default role: owner (step 8)
+      '2', // trust level: standard
       'y', // enable MCP
       'canva', // server name
       'npx -y @anthropic/canva-mcp-server', // command
@@ -261,6 +264,7 @@ describe('runInit() — MCP interactive flow', () => {
       '/proj', // workspace path
       '5', // connector: Console
       '1', // default role: owner (step 8)
+      '2', // trust level: standard
       'y', // enable MCP
       'canva', // server 1 name
       'npx -y @anthropic/canva-mcp-server', // server 1 command
@@ -291,6 +295,7 @@ describe('runInit() — MCP interactive flow', () => {
       '/proj', // workspace path
       '5', // connector: Console
       '1', // default role: owner (step 8)
+      '2', // trust level: standard
       'y', // enable MCP
       'done', // no inline servers
       '~/.claude/claude_desktop_config.json', // configPath
@@ -313,6 +318,7 @@ describe('runInit() — MCP interactive flow', () => {
       '/proj', // workspace path
       '5', // connector: Console
       '1', // default role: owner (step 8)
+      '2', // trust level: standard
       'y', // enable MCP
       'done', // no inline servers
       '', // skip configPath
@@ -332,6 +338,7 @@ describe('runInit() — MCP interactive flow', () => {
       '/proj', // workspace path
       '5', // connector: Console
       '1', // default role: owner (step 8)
+      '2', // trust level: standard
       'y', // enable MCP
       'gmail', // server name
       'npx -y @anthropic/gmail-mcp-server', // command

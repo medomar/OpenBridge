@@ -223,15 +223,15 @@ describe('readWorkspaceMap() when workspace-map.json is absent', () => {
 
     const manager = new DotFolderManager(testWorkspace);
 
-    // First call — WARN should fire once
+    // First call — DEBUG should fire (ENOENT downgraded from WARN to DEBUG)
     const result1 = await manager.readWorkspaceMap();
     expect(result1).toBeNull();
-    expect(mockWarn).toHaveBeenCalledOnce();
+    expect(mockDebug).toHaveBeenCalledOnce();
 
-    // Second call — should NOT add another WARN; DEBUG should fire instead
+    // Second call — another DEBUG should fire
     const result2 = await manager.readWorkspaceMap();
     expect(result2).toBeNull();
-    expect(mockWarn).toHaveBeenCalledOnce(); // still only once
+    expect(mockDebug).toHaveBeenCalledTimes(2);
 
     vi.doUnmock('../../src/core/logger.js');
   });

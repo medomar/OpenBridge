@@ -618,6 +618,8 @@ describe('executeTransition', () => {
       'draft',
       'submitted',
       'submit',
+      expect.objectContaining({ status: 'draft', total: 100 }),
+      expect.objectContaining({ status: 'submitted', total: 100 }),
     );
   });
 

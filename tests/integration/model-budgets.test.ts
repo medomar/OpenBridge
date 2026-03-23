@@ -98,9 +98,9 @@ describe('getClaudePromptBudget (backing getMaxPromptLength)', () => {
     expect(budget.maxPromptChars).toBe(32_768);
   });
 
-  it('returns maxPromptChars = 32_768 for undefined (conservative fallback)', () => {
+  it('returns maxPromptChars = 128_000 for undefined (Sonnet-class default)', () => {
     const budget = getClaudePromptBudget(undefined);
-    expect(budget.maxPromptChars).toBe(32_768);
+    expect(budget.maxPromptChars).toBe(128_000);
   });
 });
 

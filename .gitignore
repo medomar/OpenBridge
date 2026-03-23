@@ -57,6 +57,7 @@ pids/
 
 # Config files with secrets
 config.json
+config.*.json
 config.local.json
 config.production.json
 

@@ -189,8 +189,8 @@ describe('ClassificationEngine — OB-1528 AI classifier priority ≥ 0.4 over k
     });
 
     const result = await engine.classifyTask('configure something please');
-    expect(result.class).toBe('quick-answer');
-    expect(result.reason).toContain('AI classifier');
+    // At confidence 0.5 (0.4–0.8 range), AI quick-answer (rank 0) loses to keyword tool-use (rank 1) — keyword wins (OB-F230)
+    expect(result.class).toBe('tool-use');
   });
 
   it('AI tool-use at confidence 0.6 beats keyword quick-answer result', async () => {
@@ -260,6 +260,6 @@ describe('ClassificationEngine — OB-1529 default fallback is quick-answer', ()
   it('default fallback has 5 max turns (quick-answer budget)', () => {
     const result = classifyByKeywords(engine, 'completely unknown message with no keywords');
     expect(result.class).toBe('quick-answer');
-    expect(result.maxTurns).toBe(5);
+    expect(result.maxTurns).toBe(3);
   });
 });

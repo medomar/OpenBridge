@@ -76,6 +76,7 @@ function createMockChild(): MockChild {
   child.stdout = new EventEmitter();
   child.stderr = new EventEmitter();
   child.pid = Math.floor(Math.random() * 100000);
+  (child as unknown as Record<string, unknown>).exitCode = null;
 
   // Track kill calls but don't auto-emit close by default
   // Tests will control when close is emitted
@@ -151,9 +152,9 @@ describe('sanitizePrompt', () => {
   });
 
   it('truncates prompts exceeding the maximum length', () => {
-    const long = 'a'.repeat(40_000);
+    const long = 'a'.repeat(200_000);
     const result = sanitizePrompt(long);
-    expect(result.length).toBe(32_768);
+    expect(result.length).toBe(128_000);
   });
 });
 

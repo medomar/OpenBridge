@@ -12,7 +12,7 @@
 
 Instead, use one of the following private channels:
 
-- **GitHub Security Advisories (preferred):** [Report a vulnerability](https://github.com/openbridge-ai/openbridge/security/advisories/new)
+- **GitHub Security Advisories (preferred):** [Report a vulnerability](https://github.com/medomar/OpenBridge/security/advisories/new)
 - **Email:** security@openbridge.dev
 
 ### Responsible Disclosure Process

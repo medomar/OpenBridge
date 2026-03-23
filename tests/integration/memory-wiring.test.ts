@@ -77,6 +77,7 @@ vi.mock('../../src/core/agent-runner.js', () => {
     manifestToSpawnOptions: vi.fn((m: unknown) =>
       Promise.resolve({ spawnOptions: m, cleanup: async () => {} }),
     ),
+    setAgentRunnerMetrics: vi.fn(),
   };
 });
 
@@ -115,6 +116,15 @@ vi.mock('../../src/master/dotfolder-manager.js', () => ({
     writePromptTemplate: vi.fn().mockResolvedValue(undefined),
     getMemoryFilePath: vi.fn().mockReturnValue('/test/.openbridge/context/memory.md'),
     readMemoryFile: vi.fn().mockResolvedValue(null),
+    listAvailableTemplates: vi.fn().mockResolvedValue([]),
+    isMemoryStale: vi.fn().mockResolvedValue(false),
+    writeMemoryFile: vi.fn().mockResolvedValue(undefined),
+    writeMemoryFallback: vi.fn().mockResolvedValue(undefined),
+    readLearnings: vi.fn().mockResolvedValue(null),
+    readClassifications: vi.fn().mockResolvedValue(null),
+    writeClassifications: vi.fn().mockResolvedValue(undefined),
+    readAnalysisMarker: vi.fn().mockResolvedValue(null),
+    writeAnalysisMarker: vi.fn().mockResolvedValue(undefined),
   })),
 }));
 

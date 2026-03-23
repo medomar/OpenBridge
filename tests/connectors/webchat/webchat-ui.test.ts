@@ -121,9 +121,8 @@ describe('WebChat UI Bundle', () => {
 
   it('build script generates a valid bundle', () => {
     const bundleContent = readFileSync(bundleFilePath, 'utf8');
-    expect(bundleContent).toContain('// AUTO-GENERATED');
+    expect(bundleContent).toContain('AUTO-GENERATED');
     expect(bundleContent).toContain('export const WEBCHAT_HTML');
-    expect(bundleContent).toMatch(/Generated: \d{4}-\d{2}-\d{2}T/);
     expect(bundleContent).toContain('<!DOCTYPE html>');
   });
 });

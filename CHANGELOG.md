@@ -9,6 +9,99 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No pending changes._
 
+## [0.1.0] — 2026-03-23
+
+### Added
+
+#### Document Intelligence Layer (Phase 116)
+
+- **8 document processors** — PDF, Excel, Word, CSV, image (OCR), email (.eml), JSON, XML
+- **MIME-based routing** — auto-detects file type and dispatches to correct processor
+- **Entity extraction** — dates, amounts, names, addresses from business documents
+- **FTS5 storage** — processed document content indexed for search
+
+#### DocType Engine (Phases 117–118)
+
+- **Metadata-driven schema system** — define business entities (Invoice, Contact, Product) as JSON schemas
+- **Dynamic SQLite tables** — DDL generation from DocType definitions, child tables, computed columns
+- **Lifecycle hooks** — auto-numbering, state machines, PDF generation, notifications, payment links
+- **REST API** — CRUD endpoints for all DocTypes
+
+#### Integration Hub (Phases 119–120)
+
+- **Credential Store** — AES-256-GCM encrypted credential storage with OAuth flow support
+- **Provider registry** — pluggable adapter framework for external services
+- **4 built-in adapters** — Stripe, Google Drive, PostgreSQL, OpenAPI auto-adapter
+- **Webhook router** — inbound webhook processing with signature verification
+
+#### Workflow Engine (Phase 121)
+
+- **Multi-step pipelines** — sequential and parallel step execution with branching
+- **Schedule triggers** — cron-based workflow execution
+- **Human approval gates** — pause workflow for user confirmation
+- **Condition evaluation** — dynamic branching based on data state
+
+#### Business Document Generation (Phase 122)
+
+- **pdfmake integration** — programmatic PDF generation with templates
+- **Invoice/quote/receipt templates** — pre-built business document layouts with QR codes
+- **Multi-page layouts** — headers, footers, watermarks, page numbering
+
+#### Universal API Adapter (Phase 123)
+
+- **Swagger/Postman/cURL parsing** — auto-import API endpoints from spec files
+- **Auto skill-pack generation** — discovered APIs become worker skill packs
+
+#### Industry Templates (Phase 124)
+
+- **4 starter templates** — café/restaurant, retail, freelance, real estate
+- **Pre-built DocTypes** — per-industry entity schemas and workflows
+
+#### Skill Packs & Agent SDK (Phases 126–127)
+
+- **4 new skill packs** — cloud storage (AWS/GCP/Azure), web deploy (Docker/K8s), spreadsheet handler, file converter
+- **Agent SDK permission relay** — `canUseTool` bridge between SDK and trust levels
+- **Worker permissions** — role-based access control for worker tool usage
+
+#### Model Budgets & Trust System (Phases 133–151)
+
+- **Claude model-aware budgets** — Opus/Sonnet 128K prompt + 800K system; Haiku 32K + 180K
+- **WebChat session isolation** — per-sender history filtering, conversation retrieval isolation
+- **Worker file operations** — rm/mv/cp/mkdir added to code-edit profile with auto-escalation
+- **Trust level system** — trust-level-aware cost caps, workspace boundary enforcement
+
+#### Real-World Stability (Phases 152–169)
+
+- **Channel + role context injection** — sender role and channel type injected into worker prompts
+- **Remote file/app delivery** — file-server routing, GitHub Pages publishing, email delivery
+- **Message queueing during processing** — incoming messages queued while Master is processing
+
+### Fixed
+
+- Workspace map not persisted — missing writes on exploration complete (OB-F193, OB-F194)
+- 84% prompt truncation — budget-aware assembly with graduated warnings (OB-F192, OB-F197)
+- Stale `running` status for Codex workers — startup sweep + safety-net finally blocks (OB-F196)
+- Per-worker cost runaway — cost caps: read-only $0.05, code-edit $0.10, full-access $0.15 with SIGTERM (OB-F195)
+- Classification false positives — reduced keyword-only matches, improved conversational patterns (OB-F198)
+- Prompt size cap too low — raised to 55K with silent rejection prevention (OB-F200)
+- Startup log noise — fs.access guards, warnings downgraded to debug (OB-F199, OB-F201)
+- WebChat cross-session data leakage (OB-F202)
+- Codex/Aider model registry — 400K budget for Codex, model-specific tiers (OB-F204)
+- Worker prompt budgets and timeout alignment across all profiles (OB-F205–OB-F216)
+- Escalation loop OOM — strip existing `-escalated` suffix, max depth guards (OB-F214)
+- Docker health log noise — state-transition-only logging (OB-F215)
+- System prompt budget cap — raised from 8K to 120K (OB-F216)
+- Quick-answer timeout — reduced turns 5→3, aligned with processing deadline (OB-F217)
+- Streaming timeout retry — classify timeout exits, skip futile retries (OB-F218)
+- Codex cost estimation inaccuracy for streaming workers (OB-F219)
+- DLQ silent failure — `onDeadLetter` sends error response to user (OB-F225)
+- Classifier maxTurns=1 JSON truncation — increased to 2 (OB-F227)
+- Concurrent exploration corruption — atomic writes + state recovery (OB-F224, OB-F228)
+- Worker `.openbridge/` access — boundary instruction enforcement (OB-F223)
+- Headless worker spawn without active session (OB-F226)
+- Message queueing race conditions during processing (OB-F229)
+- Classification escalation + max-turns UX — adaptive turn allocation (OB-F230)
+
 ## [0.0.15] — 2026-03-09
 
 ### Added
@@ -467,7 +560,7 @@ _No pending changes._
 - `maxTurns: 3` blocking all non-Q&A tasks
 - `pino` `MaxListenersExceededWarning`
 
-## [0.1.0] — 2026-02-19
+## [0.0.0] — 2026-02-19
 
 ### Added
 

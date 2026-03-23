@@ -283,6 +283,7 @@ describe('DotFolderManager', () => {
         ],
         totalCalls: 1,
         totalAITimeMs: 1500,
+        subProjects: [],
       };
 
       await manager.writeExplorationState(testState);

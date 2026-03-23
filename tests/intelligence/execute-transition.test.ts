@@ -280,6 +280,8 @@ describe('executeTransition', () => {
       'draft',
       'cancelled',
       'cancel',
+      expect.objectContaining({ status: 'draft' }),
+      expect.objectContaining({ status: 'cancelled' }),
     );
   });
 
