@@ -123,6 +123,6 @@ describe('WebChat UI Bundle', () => {
     const bundleContent = readFileSync(bundleFilePath, 'utf8');
     expect(bundleContent).toContain('AUTO-GENERATED');
     expect(bundleContent).toContain('export const WEBCHAT_HTML');
-    expect(bundleContent).toContain('<!DOCTYPE html>');
+    expect(bundleContent.toLowerCase()).toContain('<!doctype html>');
   });
 });

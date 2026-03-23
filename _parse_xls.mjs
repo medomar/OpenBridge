@@ -1,6 +1,7 @@
 import XLSX from 'xlsx';
 
-const filePath = '/Users/sayadimohamedomar/Desktop/AI-Bridge/OpenBridge/.openbridge/media/1772920977196-624de47c-5d32-481b-806e-27c38ce90390.xls';
+const filePath =
+  '/Users/sayadimohamedomar/Desktop/AI-Bridge/OpenBridge/.openbridge/media/1772920977196-624de47c-5d32-481b-806e-27c38ce90390.xls';
 
 const workbook = XLSX.readFile(filePath);
 
@@ -17,7 +18,9 @@ for (const sheetName of workbook.SheetNames) {
   console.log(`SHEET: "${sheetName}"`);
   console.log(`Range: ${sheet['!ref']}`);
   console.log(`Rows: ${range.e.r - range.s.r + 1} (from ${range.s.r} to ${range.e.r})`);
-  console.log(`Columns: ${range.e.c - range.s.c + 1} (from ${XLSX.utils.encode_col(range.s.c)} to ${XLSX.utils.encode_col(range.e.c)})`);
+  console.log(
+    `Columns: ${range.e.c - range.s.c + 1} (from ${XLSX.utils.encode_col(range.s.c)} to ${XLSX.utils.encode_col(range.e.c)})`,
+  );
 
   // Get merged cells
   if (sheet['!merges'] && sheet['!merges'].length > 0) {
@@ -37,7 +40,7 @@ for (const sheetName of workbook.SheetNames) {
   for (let i = 0; i < jsonData.length; i++) {
     const row = jsonData[i];
     // Skip completely empty rows
-    const hasData = row.some(cell => cell !== '' && cell !== null && cell !== undefined);
+    const hasData = row.some((cell) => cell !== '' && cell !== null && cell !== undefined);
     if (hasData) {
       console.log(`Row ${i}: ${JSON.stringify(row)}`);
     }
@@ -63,7 +66,9 @@ for (const sheetName of workbook.SheetNames) {
       const cellRef = XLSX.utils.encode_cell({ r, c });
       const cell = sheet[cellRef];
       if (cell) {
-        console.log(`  ${cellRef}: type=${cell.t}, value=${JSON.stringify(cell.v)}, formatted=${JSON.stringify(cell.w)}`);
+        console.log(
+          `  ${cellRef}: type=${cell.t}, value=${JSON.stringify(cell.v)}, formatted=${JSON.stringify(cell.w)}`,
+        );
       }
     }
   }
@@ -74,17 +79,20 @@ for (const sheetName of workbook.SheetNames) {
     const headerRow = jsonData[0];
     for (let c = 0; c < headerRow.length; c++) {
       const colName = headerRow[c] || `Col_${c}`;
-      const values = jsonData.slice(1).map(row => row[c]).filter(v => v !== '' && v !== null && v !== undefined);
-      const numericValues = values.filter(v => typeof v === 'number');
+      const values = jsonData
+        .slice(1)
+        .map((row) => row[c])
+        .filter((v) => v !== '' && v !== null && v !== undefined);
+      const numericValues = values.filter((v) => typeof v === 'number');
 
       let analysis = `  Column "${colName}": ${values.length} non-empty values`;
       if (numericValues.length > 0) {
         const sum = numericValues.reduce((a, b) => a + b, 0);
         const min = Math.min(...numericValues);
         const max = Math.max(...numericValues);
-        analysis += ` | Numeric: min=${min}, max=${max}, sum=${sum.toFixed(2)}, avg=${(sum/numericValues.length).toFixed(2)}`;
+        analysis += ` | Numeric: min=${min}, max=${max}, sum=${sum.toFixed(2)}, avg=${(sum / numericValues.length).toFixed(2)}`;
       }
-      const uniqueTypes = [...new Set(values.map(v => typeof v))];
+      const uniqueTypes = [...new Set(values.map((v) => typeof v))];
       analysis += ` | Types: ${uniqueTypes.join(', ')}`;
       console.log(analysis);
     }

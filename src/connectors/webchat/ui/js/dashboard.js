@@ -136,6 +136,5 @@ export function updateDashboard(agents) {
     workers.length +
     '</div>';
 
-  document.getElementById('dash-lbl').textContent =
-    'Agent Status (' + agents.length + ' active)';
+  document.getElementById('dash-lbl').textContent = 'Agent Status (' + agents.length + ' active)';
 }

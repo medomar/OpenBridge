@@ -9,7 +9,12 @@ import { initDashboard, updateDashboard } from './dashboard.js';
 import { initSidebar, loadSessions, setOnSessionSelect, setOnNewConversation } from './sidebar.js';
 import { initAutocomplete } from './autocomplete.js';
 import { initSettings, setOnThemeChange, setOnSoundChange } from './settings.js';
-import { initDeepMode, handleDeepPhaseEvent, restoreDeepModeState, handleDeepModeStateSnapshot } from './deep-mode.js';
+import {
+  initDeepMode,
+  handleDeepPhaseEvent,
+  restoreDeepModeState,
+  handleDeepModeStateSnapshot,
+} from './deep-mode.js';
 
 const msgs = document.getElementById('msgs');
 const form = document.getElementById('form');
@@ -188,7 +193,11 @@ function _saveConv() {
 
 function _trackMsg(content, cls, timestamp) {
   if (!_convPersistEnabled) return;
-  _convLog.push({ content, cls, ts: (timestamp instanceof Date ? timestamp : new Date()).toISOString() });
+  _convLog.push({
+    content,
+    cls,
+    ts: (timestamp instanceof Date ? timestamp : new Date()).toISOString(),
+  });
   if (_convLog.length > CONV_MAX_MESSAGES) {
     _convLog = _convLog.slice(-CONV_MAX_MESSAGES);
   }
@@ -968,7 +977,9 @@ function renderFilePreviews() {
 
         mediaRecorder.addEventListener('stop', function () {
           // Stop all mic tracks to release the mic
-          stream.getTracks().forEach(function (t) { t.stop(); });
+          stream.getTracks().forEach(function (t) {
+            t.stop();
+          });
 
           const blob = new Blob(audioChunks, { type: mimeType });
           audioChunks = [];
@@ -983,10 +994,7 @@ function renderFilePreviews() {
           const fd = new FormData();
           fd.append('file', blob, 'voice' + ext);
 
-          addBubble(
-            '\uD83C\uDFA4 Transcribing voice\u2026',
-            'sys',
-          );
+          addBubble('\uD83C\uDFA4 Transcribing voice\u2026', 'sys');
 
           fetch('/api/transcribe', { method: 'POST', body: fd })
             .then(function (r) {
@@ -1157,8 +1165,7 @@ function applySoundToggle() {
 
   // Already running as installed PWA (standalone mode)
   const isStandalone =
-    window.matchMedia('(display-mode: standalone)').matches ||
-    window.navigator.standalone === true;
+    window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   if (isStandalone) return;
 
   // User already dismissed permanently
@@ -1174,7 +1181,8 @@ function applySoundToggle() {
 
   // Detect iOS Safari (no beforeinstallprompt — must use manual instructions)
   const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  const isSafari = /safari/i.test(navigator.userAgent) && !/chrome|crios|fxios/i.test(navigator.userAgent);
+  const isSafari =
+    /safari/i.test(navigator.userAgent) && !/chrome|crios|fxios/i.test(navigator.userAgent);
 
   function showBanner() {
     banner.classList.remove('hidden');
