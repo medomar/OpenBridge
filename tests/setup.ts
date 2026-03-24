@@ -10,6 +10,8 @@ import * as os from 'node:os';
  * by interrupted test runs. Runs once before all tests.
  */
 async function cleanStaleTestWorkspaces(): Promise<void> {
+  const STALE_THRESHOLD_MS = 300_000; // 5 minutes — only clean dirs older than this
+  const now = Date.now();
   const dirs = [process.cwd(), os.tmpdir()];
   for (const dir of dirs) {
     try {
@@ -17,7 +19,11 @@ async function cleanStaleTestWorkspaces(): Promise<void> {
       const stale = entries.filter((e) => e.startsWith('test-workspace-'));
       for (const entry of stale) {
         try {
-          await fs.rm(path.join(dir, entry), { recursive: true, force: true });
+          const fullPath = path.join(dir, entry);
+          const stat = await fs.stat(fullPath);
+          if (now - stat.mtimeMs > STALE_THRESHOLD_MS) {
+            await fs.rm(fullPath, { recursive: true, force: true });
+          }
         } catch {
           // Ignore individual cleanup errors
         }

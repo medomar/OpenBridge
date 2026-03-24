@@ -3773,16 +3773,56 @@ export class MasterManager {
 
       let response = result.stdout.trim() || 'No response from AI';
 
-      // Guard: Master session itself hit max-turns — provide actionable feedback (OB-F230)
+      // Guard: Master session itself hit max-turns — auto-retry with escalated budget (OB-F232)
+      // Mirrors the worker turn-escalation pattern (OB-903) at the Master level.
+      if (result.turnsExhausted) {
+        const originalMaxTurns = maxTurnsToUse;
+        const escalatedMaxTurns = Math.min(Math.ceil(originalMaxTurns * 1.5), 50);
+
+        logger.warn(
+          { taskId, originalMaxTurns, escalatedMaxTurns, turnsUsed: result.turnsUsed },
+          'Master session hit max-turns limit — auto-retrying with escalated budget',
+        );
+
+        const partialOutput = result.stdout.trim();
+        const incompleteMatch = partialOutput.match(/\[INCOMPLETE:\s*([^\]]+)\]/i);
+        const continuationNote = incompleteMatch?.[1]
+          ? `Previous attempt was incomplete: ${incompleteMatch[1].trim()}. Continue from where it left off.`
+          : 'Previous attempt hit the turn limit before completing. Continue from where it left off.';
+
+        const escalationPrompt = [
+          promptToSend,
+          '',
+          '---',
+          'CONTEXT FROM PREVIOUS ATTEMPT (partial output):',
+          partialOutput.slice(-2000),
+          '---',
+          continuationNote,
+        ].join('\n');
+
+        const escalationOpts = this.buildMasterSpawnOptions(
+          escalationPrompt,
+          safeTimeout,
+          escalatedMaxTurns,
+          masterContext,
+        );
+        result = await this.agentRunner.spawn(escalationOpts);
+        await this.updateMasterSession();
+        response = result.stdout.trim() || 'No response from AI';
+
+        if (result.turnsExhausted) {
+          logger.warn(
+            { taskId, escalatedMaxTurns, turnsUsed: result.turnsUsed },
+            'Escalated retry also exhausted — returning partial result with guidance',
+          );
+        }
+      }
+
+      // If still exhausted after escalation, provide actionable feedback (OB-F230)
       if (result.turnsExhausted) {
         const partial = response.length > 20 ? response : '';
         const turnsUsedStr = result.turnsUsed ? ` (used ${result.turnsUsed} turns)` : '';
-        logger.warn(
-          { taskId, maxTurns: maxTurnsToUse, turnsUsed: result.turnsUsed },
-          'Master session hit max-turns limit — returning partial result with guidance',
-        );
         if (partial && !hasSpawnMarkers(partial)) {
-          // Master produced some useful output before exhaustion — append guidance
           response =
             partial +
             `\n\n⚠️ I ran out of processing capacity${turnsUsedStr}. ` +

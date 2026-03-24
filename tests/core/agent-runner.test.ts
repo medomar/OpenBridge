@@ -324,16 +324,16 @@ describe('Tool group constants', () => {
 // ── Max-turns defaults ──────────────────────────────────────────────
 
 describe('Max-turns defaults', () => {
-  it('DEFAULT_MAX_TURNS_EXPLORATION is 15', () => {
-    expect(DEFAULT_MAX_TURNS_EXPLORATION).toBe(15);
+  it('DEFAULT_MAX_TURNS_EXPLORATION is 25 (monorepo headroom)', () => {
+    expect(DEFAULT_MAX_TURNS_EXPLORATION).toBe(25);
   });
 
   it('DEFAULT_MAX_TURNS_TASK is 25', () => {
     expect(DEFAULT_MAX_TURNS_TASK).toBe(25);
   });
 
-  it('exploration default is lower than task default', () => {
-    expect(DEFAULT_MAX_TURNS_EXPLORATION).toBeLessThan(DEFAULT_MAX_TURNS_TASK);
+  it('exploration default does not exceed task default', () => {
+    expect(DEFAULT_MAX_TURNS_EXPLORATION).toBeLessThanOrEqual(DEFAULT_MAX_TURNS_TASK);
   });
 
   it('--max-turns is always present in args even without explicit maxTurns', () => {
@@ -348,7 +348,7 @@ describe('Max-turns defaults', () => {
       maxTurns: DEFAULT_MAX_TURNS_EXPLORATION,
     });
     const idx = args.indexOf('--max-turns');
-    expect(args[idx + 1]).toBe('15');
+    expect(args[idx + 1]).toBe('25');
   });
 });
 
