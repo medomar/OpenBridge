@@ -66,8 +66,8 @@ export function setAgentRunnerMetrics(collector: MetricsCollector | null): void 
  * the process timeout kills it (OB-F14: exit code 143 / SIGTERM).
  */
 
-/** Max turns for exploration tasks (file listing, classification) — fast, bounded */
-export const DEFAULT_MAX_TURNS_EXPLORATION = 15;
+/** Max turns for exploration tasks (file listing, classification) — needs headroom for monorepos */
+export const DEFAULT_MAX_TURNS_EXPLORATION = 25;
 
 /** Max turns for user-facing tasks (implementation, reasoning) — more room to work */
 export const DEFAULT_MAX_TURNS_TASK = 25;

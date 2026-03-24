@@ -85,7 +85,7 @@ const DirectoryDiveResultAISchema = DirectoryDiveResultSchema.extend({
   durationMs: z.number().int().nonnegative().optional().default(0),
 }) as z.ZodType<DirectoryDiveResult>;
 
-const PHASE_TIMEOUT = 300_000; // 5 minutes per phase (large workspaces need more time)
+const PHASE_TIMEOUT = 600_000; // 10 minutes per phase (large workspaces with multiple sub-projects)
 const DIRECTORY_DIVE_TIMEOUT = 180_000; // 3 minutes per directory dive
 const MAX_DIRECTORY_DIVE_TIMEOUT = 600_000; // 10 minutes max per directory dive
 const MAX_RETRIES = 3;
