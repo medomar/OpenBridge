@@ -67,7 +67,7 @@
     "clean": "rm -rf dist coverage"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.74",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.90",
     "@apidevtools/swagger-parser": "^12.1.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/imap": "^0.8.43",
@@ -78,14 +78,14 @@
     "@types/xml2js": "^0.4.14",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.6.2",
-    "discord.js": "^14.25.1",
+    "discord.js": "^14.26.0",
     "dropbox": "^10.34.0",
     "file-type": "^21.3.1",
     "googleapis": "^171.4.0",
     "grammy": "^1.41.0",
     "highlight.js": "^11.11.1",
     "imap": "^0.8.19",
-    "mailparser": "^3.9.4",
+    "mailparser": "^3.9.6",
     "mammoth": "^1.11.0",
     "marked": "^17.0.3",
     "node-cron": "^4.2.1",
@@ -123,7 +123,7 @@
     "prettier": "^3.4.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
-    "typescript-eslint": "^8.56.1",
+    "typescript-eslint": "^8.58.0",
     "vitest": "^2.1.0",
     "xlsx": "^0.18.5"
   },
@@ -132,7 +132,7 @@
     "exceljs": "^4.4.0",
     "pptxgenjs": "^3.12.0",
     "puppeteer": "^23.0.0",
-    "sqlite-vec": "^0.1.0"
+    "sqlite-vec": "^0.1.9"
   },
   "lint-staged": {
     "*.{ts,tsx}": [
